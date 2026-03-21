@@ -95,6 +95,7 @@ const BIN_IDS = {
   roblox:  '69b663fab7ec241ddc6d458d',
   sab:     '69be9ee7c3097a1dd546d40a',
   giveaway:'69be9ed8b7ec241ddc8c18c5',
+  vouches: '69bea2d3b7ec241ddc8c282e',
 };
 const DEFAULTS = {
   users:  {},
@@ -102,14 +103,15 @@ const DEFAULTS = {
   roblox: {},
   sab:    [],
   giveaway: {},
+  vouches: {},
   meta:   { stockMsgId: null, claimCounter: 0 },
   claims: [],
   warns:  {},
   codes:  {},
 };
-const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null };
-const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0 };
-const CACHE_TTL = { users: Infinity, store: 30_000, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000 };
+const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null };
+const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0 };
+const CACHE_TTL = { users: Infinity, store: 30_000, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000 };
 
 async function binRead(name) {
   const res = await safeFetch(`https://api.jsonbin.io/v3/b/${BIN_IDS[name]}/latest`, {
@@ -350,6 +352,11 @@ const slashDefs = [
   new SCB().setName('add-user').setDescription('Link your Roblox username to your Discord account').addStringOption(o=>o.setName('roblox_username').setDescription('Your Roblox username').setRequired(true)),
   new SCB().setName('check-user').setDescription('See all linked Roblox users').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('game-night-start').setDescription('[ADMIN] DM all linked users about a game night starting').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('vouch').setDescription('Leave a vouch for a user')
+    .addUserOption(o=>o.setName('user').setDescription('User to vouch for').setRequired(true))
+    .addStringOption(o=>o.setName('comment').setDescription('Leave a comment (optional)').setRequired(false)),
+  new SCB().setName('vouches').setDescription('View vouches for a user')
+    .addUserOption(o=>o.setName('user').setDescription('User to check').setRequired(true)),
   new SCB().setName('find-user').setDescription('[ADMIN] Find a linked user by Roblox or Discord username').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('query').setDescription('Roblox username or @Discord mention').setRequired(true)),
   new SCB().setName('giveaway').setDescription('[ADMIN] Start a coin giveaway').setDefaultMemberPermissions(PFB.Administrator)
@@ -1263,6 +1270,41 @@ client.on('interactionCreate', async interaction => {
       sendLog(client,{title:'🎮 Game Night Started',color:0x9B59B6,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'DMs Sent',value:`${sent}`,inline:true},{name:'Failed',value:`${failed}`,inline:true}]});
       return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🎮 Game Night Started!').setDescription(`DMs sent to **${sent}** linked user(s)!${failed>0?`\n❌ ${failed} user(s) had DMs closed.`:''}`)]});
     }
+
+
+    if (cmd==='vouch') {
+      const target = interaction.options.getUser('user');
+      const comment = interaction.options.getString('comment') || null;
+      if (target.id === me.id) return reply({embeds:[errEmbed('You cannot vouch for yourself!')],flags:MessageFlags.Ephemeral});
+      if (target.bot) return reply({embeds:[errEmbed('You cannot vouch for a bot!')],flags:MessageFlags.Ephemeral});
+      const vdata = await dbRead('vouches');
+      if (!vdata[target.id]) vdata[target.id] = [];
+      const already = vdata[target.id].find(v => v.fromId === me.id);
+      if (already) return reply({embeds:[errEmbed(`You already vouched for <@${target.id}>! You can only vouch once per person.`)],flags:MessageFlags.Ephemeral});
+      vdata[target.id].push({ fromId: me.id, fromName: me.username, comment, at: Date.now() });
+      await dbWrite('vouches', vdata);
+      sendLog(client,{title:'⭐ Vouch Left',color:0xF1C40F,fields:[{name:'From',value:`<@${me.id}>`,inline:true},{name:'For',value:`<@${target.id}>`,inline:true},{name:'Comment',value:comment||'No comment',inline:false}]});
+      return reply({embeds:[new EmbedBuilder()
+        .setColor(0xF1C40F)
+        .setTitle('⭐ Vouch Submitted!')
+        .setDescription(`You vouched for <@${target.id}>!${comment ? `\n\n> "${comment}"` : ''}`)
+        .setFooter({text:`${target.username} now has ${vdata[target.id].length} vouch(es)`})]});
+    }
+
+    if (cmd==='vouches') {
+      const target = interaction.options.getUser('user');
+      const vdata = await dbRead('vouches');
+      const list = vdata[target.id] || [];
+      if (!list.length) return reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle(`⭐ Vouches — ${target.username}`).setDescription('This user has no vouches yet.')]});
+      const lines = list.map((v,i) => `**${i+1}.** <@${v.fromId}>${v.comment ? ` — "${v.comment}"` : ''} · <t:${Math.floor(v.at/1000)}:R>`).join('\n');
+      return reply({embeds:[new EmbedBuilder()
+        .setColor(0xF1C40F)
+        .setTitle(`⭐ Vouches — ${target.username}`)
+        .setDescription(lines)
+        .setThumbnail(target.displayAvatarURL())
+        .setFooter({text:`${list.length} total vouch(es)`})]});
+    }
+
 
     if (cmd==='find-user') {
       await interaction.deferReply({flags:MessageFlags.Ephemeral});
