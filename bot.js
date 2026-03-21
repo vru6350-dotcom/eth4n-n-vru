@@ -1,4 +1,4 @@
-\process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
+process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
 process.on('uncaughtException',  e => console.error('Uncaught exception:', e));
 
 const {
