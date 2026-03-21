@@ -1,4 +1,4 @@
-process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
+\process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
 process.on('uncaughtException',  e => console.error('Uncaught exception:', e));
 
 const {
@@ -367,9 +367,12 @@ const slashDefs = [
   new SCB().setName('update-sab').setDescription('[ADMIN] Add/update a SAB stock item').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('item').setDescription('Item name').setRequired(true))
     .addStringOption(o=>o.setName('stock').setDescription('Stock type').setRequired(true).addChoices({name:'M (Multiple)',value:'M'},{name:'S (Single)',value:'S'}))
-    .addIntegerOption(o=>o.setName('price').setDescription('Price in coins').setRequired(true).setMinValue(1)),
+    .addIntegerOption(o=>o.setName('price').setDescription('Price in coins').setRequired(true).setMinValue(1))
+    .addStringOption(o=>o.setName('making_money').setDescription('Making money rate e.g. 100/s or 100m/s').setRequired(false)),
   new SCB().setName('remove-stock-sab').setDescription('[ADMIN] Remove a SAB item from stock').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('item').setDescription('Item name to remove').setRequired(true)),
+  new SCB().setName('redeem-sab').setDescription('Buy a SAB item from stock')
+    .addStringOption(o=>o.setName('item').setDescription('Item name to buy').setRequired(true)),
 ].map(c => c.toJSON());
 
 let coinWriteTimer = null;
@@ -736,8 +739,8 @@ client.on('interactionCreate', async interaction => {
     const sab = await dbRead('sab');
     const items = Array.isArray(sab) ? sab.filter(i => i && i.item) : [];
     if (!items.length) return interaction.reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🛍️ SAB Stock').setDescription('No SAB items in stock right now.')],flags:MessageFlags.Ephemeral});
-    const lines = items.map(i => `**${i.item}** | ${i.price.toLocaleString()} ${COIN_EMOJI}`).join('\n');
-    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle('🛍️ SAB Stock').setDescription(lines).setFooter({text:'M = Multiple available · S = Single unit'})],flags:MessageFlags.Ephemeral});
+    const lines = items.map(i => `**${i.item}**${i.worth ? ` | 💵 ${i.worth}` : ''} | ${i.price.toLocaleString()} ${COIN_EMOJI}`).join('\n');
+    return interaction.reply({embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle('🛍️ SAB Stock').setDescription(lines).setFooter({text:'💵 = Making Money rate · Buy via /redeem-sab <item name>'})],flags:MessageFlags.Ephemeral});
   }
 
   // ── CHECK-USER PAGINATION ──
@@ -1328,12 +1331,46 @@ client.on('interactionCreate', async interaction => {
       const sab   = await dbRead('sab');
       const arr   = Array.isArray(sab) ? sab.filter(i => i && i.item) : [];
       const idx   = arr.findIndex(i => i.item.toLowerCase() === item.toLowerCase());
-      if (idx >= 0) arr[idx] = { item, stock, price };
-      else arr.push({ item, stock, price });
+      const worth = interaction.options.getString('making_money') || null;
+      if (idx >= 0) arr[idx] = { item, stock, price, worth };
+      else arr.push({ item, stock, price, worth });
       await dbWrite('sab', arr);
-      sendLog(client,{title:'🛍️ SAB Item Updated',color:0x9B59B6,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Item',value:item,inline:true},{name:'Stock',value:stock,inline:true},{name:'Price',value:`${price.toLocaleString()} ${COIN_EMOJI}`,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ SAB Stock Updated').setDescription(`**${item}** | ${stock} | ${price.toLocaleString()} ${COIN_EMOJI}`)]});
+      sendLog(client,{title:'🛍️ SAB Item Updated',color:0x9B59B6,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Item',value:item,inline:true},{name:'Stock',value:stock,inline:true},{name:'Price',value:`${price.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Worth',value:worth||'N/A',inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ SAB Stock Updated').setDescription(`**${item}** | ${stock} | ${price.toLocaleString()} ${COIN_EMOJI}${worth ? ` | Worth: ${worth}` : ''}`)]});
     }
+
+
+    if (cmd==='redeem-sab') {
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const itemName = interaction.options.getString('item').trim().toLowerCase();
+      const sab = await dbRead('sab');
+      const arr = Array.isArray(sab) ? sab.filter(i => i && i.item) : [];
+      const idx = arr.findIndex(i => i.item.toLowerCase() === itemName);
+      if (idx === -1) return interaction.editReply({embeds:[errEmbed(`**${interaction.options.getString('item')}** not found in SAB stock. Use the 🛒 button on the stock embed to see available items.`)]});
+      const sabItem = arr[idx];
+      const u = await getUser(me.id, me.username);
+      if (u.coins < sabItem.price) return interaction.editReply({embeds:[errEmbed(`You need **${sabItem.price.toLocaleString()}** ${COIN_EMOJI} but only have **${u.coins.toLocaleString()}** ${COIN_EMOJI}!`)]});
+      // Deduct coins
+      u.coins -= sabItem.price;
+      await saveUser(u);
+      // If single stock, remove from SAB after purchase
+      if (sabItem.stock === 'S') {
+        arr.splice(idx, 1);
+        await dbWrite('sab', arr);
+      }
+      sendLog(client,{title:'🛍️ SAB Item Purchased',color:0x9B59B6,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Item',value:sabItem.item,inline:true},{name:'Price',value:`${sabItem.price.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Stock Type',value:sabItem.stock==='S'?'Single (removed from stock)':'Multiple',inline:true},{name:'Balance',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true}]});
+      // Alert admins
+      try {
+        const alertCh = await client.channels.fetch(ALERT_CHANNEL_ID);
+        if (alertCh) await alertCh.send({embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle('🛍️ SAB Purchase').setDescription(`<@${me.id}> purchased **${sabItem.item}** for **${sabItem.price.toLocaleString()}** ${COIN_EMOJI}.\n\nPlease deliver their item!`)]});
+      } catch {}
+      return interaction.editReply({embeds:[new EmbedBuilder()
+        .setColor(0x57F287)
+        .setTitle('🛍️ SAB Purchase Successful!')
+        .setDescription(`You bought **${sabItem.item}** for **${sabItem.price.toLocaleString()}** ${COIN_EMOJI}!\n\nBalance: **${u.coins.toLocaleString()}** ${COIN_EMOJI}\n\nAn admin will deliver your item shortly! Check <#${ALERT_CHANNEL_ID}> for updates.`)
+        .setFooter({text:sabItem.stock==='S'?'This was the last one — now out of stock!':'More stock available'})]});
+    }
+
 
     if (cmd==='remove-stock-sab') {
       const item = interaction.options.getString('item').trim();
