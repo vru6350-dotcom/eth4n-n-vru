@@ -362,8 +362,8 @@ const slashDefs = [
   new SCB().setName('giveaway').setDescription('[ADMIN] Start a coin giveaway').setDefaultMemberPermissions(PFB.Administrator)
     .addIntegerOption(o=>o.setName('duration').setDescription('Duration in minutes').setRequired(true).setMinValue(1))
     .addStringOption(o=>o.setName('prize').setDescription('Prize description e.g. 500 coins').setRequired(true))
-    .addIntegerOption(o=>o.setName('winners').setDescription('Number of winners (default 1)').setRequired(false).setMinValue(1).setMaxValue(10))
-    .addIntegerOption(o=>o.setName('coins').setDescription('Coins to give each winner').setRequired(true).setMinValue(1)),
+    .addIntegerOption(o=>o.setName('coins').setDescription('Coins to give each winner').setRequired(true).setMinValue(1))
+    .addIntegerOption(o=>o.setName('winners').setDescription('Number of winners (default 1)').setRequired(false).setMinValue(1).setMaxValue(10)),
   new SCB().setName('update-sab').setDescription('[ADMIN] Add/update a SAB stock item').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('item').setDescription('Item name').setRequired(true))
     .addStringOption(o=>o.setName('stock').setDescription('Stock type').setRequired(true).addChoices({name:'M (Multiple)',value:'M'},{name:'S (Single)',value:'S'}))
