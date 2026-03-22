@@ -1282,8 +1282,7 @@ client.on('interactionCreate', async interaction => {
       if (target.bot) return reply({embeds:[errEmbed('You cannot vouch for a bot!')],flags:MessageFlags.Ephemeral});
       const vdata = await dbRead('vouches');
       if (!vdata[target.id]) vdata[target.id] = [];
-      const already = vdata[target.id].find(v => v.fromId === me.id);
-      if (already) return reply({embeds:[errEmbed(`You already vouched for <@${target.id}>! You can only vouch once per person.`)],flags:MessageFlags.Ephemeral});
+
       vdata[target.id].push({ fromId: me.id, fromName: me.username, comment, at: Date.now() });
       await dbWrite('vouches', vdata);
       sendLog(client,{title:'⭐ Vouch Left',color:0xF1C40F,fields:[{name:'From',value:`<@${me.id}>`,inline:true},{name:'For',value:`<@${target.id}>`,inline:true},{name:'Comment',value:comment||'No comment',inline:false}]});
