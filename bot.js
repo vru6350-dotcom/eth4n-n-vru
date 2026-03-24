@@ -2337,4 +2337,3 @@ client.on('interactionCreate', async interaction => {
 
 setInterval(()=>console.log('Heartbeat:',new Date().toISOString()),300_000);
 client.login(BOT_TOKEN);
-```
