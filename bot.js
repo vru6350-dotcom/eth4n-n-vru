@@ -1,13 +1,4 @@
-Of course. Here is the complete, corrected code for your Discord bot with all the requested fixes applied.
 
-I have implemented the following changes:
-1.  **Slash Command Registration:** The bot will now correctly register and update slash commands on both your main server and your designated test server upon startup.
-2.  **Admin Help Command:** The `/adminhelp` command has been fully updated to include all the latest game hosting, stock management, and administrative commands, organized into clear categories.
-3.  **Blackjack Game Logic:** The blackjack button handler has been completely rewritten to be more robust and reliable, fixing the bugs that caused it to fail. The game flow for winning, losing, busting, and standing is now handled correctly.
-
-You can replace the entire content of your bot file with the code below.
-
-```javascript
 process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
 process.on('uncaughtException',  e => console.error('Uncaught exception:', e));
 
