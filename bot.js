@@ -32,6 +32,23 @@ const ALERT_CHANNEL_ID = '1480833457604268154';
 const GTN_CHANNEL_ID   = '1482076857321914378';
 const DROP_CHANNEL_ID  = '1481582652430483579';
 const LOG_CHANNEL_ID   = '1482112291750150214';
+const TEST_GUILD_ID    = '1485636323854389360';
+const TESTER_ROLE_NAME = 'Tester';
+
+function isTestServer(guildId) { return guildId === TEST_GUILD_ID; }
+function hasTesterRole(member) {
+  if (!member) return false;
+  return member.roles.cache.some(r => r.name === TESTER_ROLE_NAME);
+}
+// In test server: everyone can run all cmds BUT only testers earn rewards
+function canRunAdmin(interaction) {
+  if (isTestServer(interaction.guildId)) return true;
+  return interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
+}
+function canEarnRewards(interaction) {
+  if (isTestServer(interaction.guildId)) return hasTesterRole(interaction.member);
+  return true;
+}
 const GUILD_ID         = (process.env.GUILD_ID   || '').trim();
 const JSONBIN_KEY      =  process.env.JSONBIN_KEY;
 const BOT_TOKEN        =  process.env.BOT_TOKEN;
@@ -60,10 +77,31 @@ const activeGTN = new Map();
 // ── Active Blackjack games: Map<userId, gameState> ──
 const activeBlackjack = new Map();
 
+// ── Game state maps ──
+const activeChairGame  = new Map(); // guildId -> state
+const activeMafia      = new Map(); // guildId -> state
+const activePickNumber = new Map(); // guildId -> state
+const activeGreentea   = new Map(); // guildId -> state
+const activeBlacktea   = new Map(); // guildId -> state
+
 // ── Active Loot Drop state ──
 // { coins, claimedBy: null|userId }
 let activeLootDrop = null;
 const activeGiveaways = new Map();
+
+// Bank tiers: { id, name, cost, capacity }
+const BANK_TIERS = [
+  { id: 'bank_basic',  name: 'Basic Bank',    cost: 500,  capacity: 500  },
+  { id: 'bank_t2',     name: 'Bank Tier 2',   cost: 750,  capacity: 750  },
+  { id: 'bank_t3',     name: 'Bank Tier 3',   cost: 1000, capacity: 1000 },
+  { id: 'bank_t4',     name: 'Bank Tier 4',   cost: 1250, capacity: 1250 },
+  { id: 'bank_t5',     name: 'Bank Tier 5',   cost: 1500, capacity: 1500 },
+  { id: 'bank_t6',     name: 'Bank Tier 6',   cost: 2000, capacity: 2000 },
+  { id: 'bank_t7',     name: 'Bank Tier 7',   cost: 2500, capacity: 2500 },
+];
+
+// Letter pools for word games
+const LETTER_POOLS = ['B','C','D','F','G','H','J','K','L','M','N','P','R','S','T','W','BR','CH','DR','FL','GR','PL','PR','SC','SK','SL','SM','SN','SP','ST','SW','TH','TR','WR'];
 
 const SHOP = [
   { id: 'robux_25',   name: '25 Robux',   cost: 100,  category: 'Robux', robuxAmt: 25  },
@@ -96,6 +134,7 @@ const BIN_IDS = {
   sab:     '69be9ee7c3097a1dd546d40a',
   giveaway:'69be9ed8b7ec241ddc8c18c5',
   vouches: '69bea2d3b7ec241ddc8c282e',
+  banks:   '69c27ce0b7ec241ddc9ac304',
 };
 const DEFAULTS = {
   users:  {},
@@ -104,14 +143,15 @@ const DEFAULTS = {
   sab:    [],
   giveaway: {},
   vouches: {},
+  banks:   {},
   meta:   { stockMsgId: null, claimCounter: 0 },
   claims: [],
   warns:  {},
   codes:  {},
 };
-const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null };
-const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0 };
-const CACHE_TTL = { users: Infinity, store: 30_000, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000 };
+const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null, banks: null };
+const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0, banks: 0 };
+const CACHE_TTL = { users: Infinity, store: 0, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000, banks: 0 };
 
 async function binRead(name) {
   const res = await safeFetch(`https://api.jsonbin.io/v3/b/${BIN_IDS[name]}/latest`, {
@@ -201,7 +241,7 @@ async function getUser(userId, username) {
 async function saveUser(u) { const users = await dbRead('users'); users[u.id] = u; await dbWrite('users', users); }
 async function getLeaderboard(n) { const users = await dbRead('users'); return Object.values(users).sort((a,b)=>b.coins-a.coins).slice(0,n); }
 async function getStore()    { return dbRead('store'); }
-async function saveStore(s)  { await dbWrite('store', s); }
+async function saveStore(s)  { await dbWrite('store', s); cacheTime.store = 0; }
 async function getMeta()     { return dbRead('meta'); }
 async function saveMeta(m)   { await dbWrite('meta', m); }
 async function getClaims()   { cacheTime.claims = 0; return dbRead('claims'); } // always read fresh
@@ -373,6 +413,34 @@ const slashDefs = [
     .addStringOption(o=>o.setName('item').setDescription('Item name to remove').setRequired(true)),
   new SCB().setName('redeem-sab').setDescription('Buy a SAB item from stock')
     .addStringOption(o=>o.setName('item').setDescription('Item name to buy').setRequired(true)),
+  new SCB().setName('chair-game').setDescription('[ADMIN] Start a Chair Game').setDefaultMemberPermissions(PFB.Administrator)
+    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for winner').setRequired(true).setMinValue(1)),
+  new SCB().setName('mafia').setDescription('[ADMIN] Start a Mafia game').setDefaultMemberPermissions(PFB.Administrator)
+    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for innocents if they win').setRequired(true).setMinValue(1))
+    .addIntegerOption(o=>o.setName('murderers').setDescription('Number of murderers (default 1)').setRequired(false).setMinValue(1)),
+  new SCB().setName('pick-number').setDescription('[ADMIN] Start a Pick a Number game (1-50 grid)').setDefaultMemberPermissions(PFB.Administrator)
+    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for last survivor').setRequired(true).setMinValue(1)),
+  new SCB().setName('greentea').setDescription('[ADMIN] Start a Greentea word game').setDefaultMemberPermissions(PFB.Administrator)
+    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for winner').setRequired(true).setMinValue(1)),
+  new SCB().setName('blacktea').setDescription('[ADMIN] Start a Blacktea word game (5 rounds)').setDefaultMemberPermissions(PFB.Administrator)
+    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for winner').setRequired(true).setMinValue(1)),
+  new SCB().setName('chair-next').setDescription('[ADMIN] Start next Chair Game round').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('mafia-start').setDescription('[ADMIN] Start Mafia after players join').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('mafia-next').setDescription('[ADMIN] Process Mafia round results').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('mafia-kill').setDescription('[MURDERER] Kill a player in Mafia').addUserOption(o=>o.setName('user').setDescription('Player to kill').setRequired(true)),
+  new SCB().setName('mafia-vote').setDescription('[INNOCENT] Vote who you think is the murderer').addUserOption(o=>o.setName('user').setDescription('Player to vote out').setRequired(true)),
+  new SCB().setName('pick-number-round').setDescription('[ADMIN] Start a Pick a Number round').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('greentea-round').setDescription('[ADMIN] Start a Greentea round').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('greentea-next').setDescription('[ADMIN] End Greentea round and eliminate').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('blacktea-round').setDescription('[ADMIN] Start a Blacktea round').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('blacktea-next').setDescription('[ADMIN] Score Blacktea round').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('server-shop').setDescription('View the server shop (bank & upgrades)'),
+  new SCB().setName('deposit').setDescription('Deposit coins into your bank').addIntegerOption(o=>o.setName('amount').setDescription('Amount to deposit (or 0 for max)').setRequired(true).setMinValue(0)),
+  new SCB().setName('withdraw').setDescription('Withdraw coins from your bank').addIntegerOption(o=>o.setName('amount').setDescription('Amount to withdraw (or 0 for all)').setRequired(true).setMinValue(0)),
+  new SCB().setName('rob').setDescription('Rob another user (if they have no bank)').addUserOption(o=>o.setName('user').setDescription('User to rob').setRequired(true)),
+  new SCB().setName('bank').setDescription('Check your bank balance'),
+  new SCB().setName('buy-bank').setDescription('Buy a bank from the server shop'),
+  new SCB().setName('upgrade-bank').setDescription('Upgrade your bank to the next tier'),
 ].map(c => c.toJSON());
 
 let coinWriteTimer = null;
@@ -467,6 +535,41 @@ client.on('messageCreate', async msg => {
       }
     }
   }
+
+  // ── GREENTEA word listener ──
+  const gtGame = activeGreentea.get(msg.guild?.id);
+  if (gtGame && gtGame.phase==='answering' && gtGame.players.has(msg.author.id) && msg.channel.id===gtGame.channelId) {
+    const word = msg.content.trim().toUpperCase();
+    const alreadyAnswered = gtGame.answers.has(msg.author.id);
+    const wordUsed = gtGame.usedWords.has(word);
+    const startsOk = word.startsWith(gtGame.letters);
+    if (startsOk && !wordUsed && !alreadyAnswered) {
+      gtGame.answers.set(msg.author.id, { word, at: Date.now() });
+      gtGame.usedWords.add(word);
+      try { await msg.react('✅'); } catch {}
+    } else {
+      const curChances = (gtGame.chances.get(msg.author.id)||3) - 1;
+      gtGame.chances.set(msg.author.id, curChances);
+      try { await msg.react('❌'); } catch {}
+      if (curChances <= 0) {
+        try { await msg.reply({embeds:[new EmbedBuilder().setColor(0xED4245).setDescription(`<@${msg.author.id}> used all 3 chances and will be eliminated this round!`)]}); } catch {}
+      }
+    }
+  }
+
+  // ── BLACKTEA word listener ──
+  const btGame = activeBlacktea.get(msg.guild?.id);
+  if (btGame && btGame.phase==='answering' && btGame.players.has(msg.author.id) && msg.channel.id===btGame.channelId) {
+    const word = msg.content.trim().toUpperCase();
+    if (!btGame.usedWords.has(word) && word.startsWith(btGame.letters) && !btGame.answers.has(msg.author.id)) {
+      btGame.answers.set(msg.author.id, { word, at: Date.now() });
+      btGame.usedWords.add(word);
+      try { await msg.react('✅'); } catch {}
+    } else {
+      try { await msg.react(btGame.answers.has(msg.author.id) ? '⚠️' : '❌'); } catch {}
+    }
+  }
+
 
   // GTN listener
   if (msg.channel.id === GTN_CHANNEL_ID && activeGTN.has(GTN_CHANNEL_ID)) {
@@ -682,6 +785,8 @@ async function cmdRedeem(reply, userId, username, itemId) {
   const item=SHOP.find(i=>i.id===itemId);
   if (!item) return reply({ embeds:[errEmbed('Unknown item ID. Use `/shop` to see valid IDs.')] });
   const u=await getUser(userId,username);
+  const banks=await dbRead('banks'); const uBank=banks[userId];
+  if (uBank&&uBank.balance>0) return reply({ embeds:[errEmbed(`You have **${uBank.balance}** ${COIN_EMOJI} in your bank! Withdraw first before buying.`)] });
   if (u.coins<item.cost) return reply({ embeds:[errEmbed(`Need **${item.cost}** ${COIN_EMOJI}, you only have **${u.coins}**!`)] });
   const store=await getStore();
   if (item.id==='etfb_cel'&&store.celestials<=0) return reply({ embeds:[errEmbed('Celestials are out of stock!')] });
@@ -734,6 +839,89 @@ async function cmdRain(msgOrInteraction, guild, senderId, senderName, amount) {
 // ══════════════════════════════════════════
 client.on('interactionCreate', async interaction => {
   // ── BLACKJACK BUTTON HANDLER ──
+  // ── GAME JOIN / INTERACTION BUTTONS ──
+  if (interaction.isButton()) {
+    const cid = interaction.customId;
+
+    // Chair Game join
+    if (cid.startsWith('cg_join_')) {
+      const gwId = cid.replace('cg_join_','');
+      const game = [...activeChairGame.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
+      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
+      game.players.add(interaction.user.id);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined the Chair Game! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
+    }
+
+    // Chair Game round click
+    if (cid.startsWith('cgr_')) {
+      const parts = cid.split('_');
+      const gwId = parts[1]; const round = parseInt(parts[2]);
+      const game = [...activeChairGame.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('Game not found.')],flags:MessageFlags.Ephemeral});
+      if (!game.players.has(interaction.user.id)) return interaction.reply({embeds:[errEmbed('You are not in this game!')],flags:MessageFlags.Ephemeral});
+      if (game.round!==round) return interaction.reply({embeds:[errEmbed('This round has ended.')],flags:MessageFlags.Ephemeral});
+      if (!game.clickedThisRound) game.clickedThisRound = new Set();
+      game.clickedThisRound.add(interaction.user.id);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ You clicked!')],flags:MessageFlags.Ephemeral});
+    }
+
+    // Mafia join
+    if (cid.startsWith('mf_join_')) {
+      const gwId = cid.replace('mf_join_','');
+      const game = [...activeMafia.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
+      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
+      game.players.add(interaction.user.id);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined Mafia! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
+    }
+
+    // Pick a Number join
+    if (cid.startsWith('pn_join_')) {
+      const gwId = cid.replace('pn_join_','');
+      const game = [...activePickNumber.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
+      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
+      game.players.add(interaction.user.id);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined Pick a Number! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
+    }
+
+    // Pick a Number grid pick
+    if (cid.startsWith('pn_pick_')) {
+      const parts = cid.split('_');
+      const gwId = parts[2]; const round = parseInt(parts[3]); const num = parseInt(parts[4]);
+      const game = [...activePickNumber.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('Game not found.')],flags:MessageFlags.Ephemeral});
+      if (!game.players.has(interaction.user.id)) return interaction.reply({embeds:[errEmbed('You are not in this game!')],flags:MessageFlags.Ephemeral});
+      if (game.round!==round) return interaction.reply({embeds:[errEmbed('This round has ended.')],flags:MessageFlags.Ephemeral});
+      if (game.picks.has(interaction.user.id)) return interaction.reply({embeds:[errEmbed(`You already picked **${game.picks.get(interaction.user.id)}**!`)],flags:MessageFlags.Ephemeral});
+      game.picks.set(interaction.user.id, num);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You picked **${num}**! Wait for the round to end.`)],flags:MessageFlags.Ephemeral});
+    }
+
+    // Greentea join
+    if (cid.startsWith('gt_join_')) {
+      const gwId = cid.replace('gt_join_','');
+      const game = [...activeGreentea.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
+      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
+      game.players.add(interaction.user.id);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined Greentea! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
+    }
+
+    // Blacktea join
+    if (cid.startsWith('bt_join_')) {
+      const gwId = cid.replace('bt_join_','');
+      const game = [...activeBlacktea.values()].find(g=>g.gwId===gwId);
+      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
+      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
+      game.players.add(interaction.user.id);
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined Blacktea! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
+    }
+
+    return; // no matching button
+  }
+
   // ── SAB STOCK VIEW BUTTON ──
   if (interaction.isButton() && interaction.customId === 'sab_view') {
     const sab = await dbRead('sab');
@@ -877,6 +1065,12 @@ client.on('interactionCreate', async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
   const cmd=interaction.commandName, me=interaction.user, reply=p=>interaction.reply(p);
+    const isTestSrv = isTestServer(interaction.guildId);
+    // Test server: block non-testers with an error
+    if (isTestSrv && !hasTesterRole(interaction.member) && !interaction.member?.permissions.has(PermissionFlagsBits.Administrator)) {
+      const testerOnly = ['give','take','rain','update-robux','update-etfb','claims','claimed','deny-claim','remove-inv','check-inventory','make-code','drop-code','remove-code','list-codes','gtn','timeout','untimeout','warn','unwarn','warns','kick','ban','lootdrop','check-user','find-user','game-night-start','update-sab','remove-stock-sab','giveaway','chair-game','mafia','pick-number','greentea','blacktea'];
+      if (!testerOnly.includes(cmd)) {} // non-admin cmds always allowed
+    }
 
   try {
     if (cmd==='balance')     return await cmdBalance(reply, interaction.options.getUser('user')||me);
@@ -1275,6 +1469,128 @@ client.on('interactionCreate', async interaction => {
     }
 
 
+
+    // ══════════════════════════════════════════
+    //  SERVER SHOP (Bank & Upgrades)
+    // ══════════════════════════════════════════
+    if (cmd==='server-shop') {
+      const banks = await dbRead('banks');
+      const userBank = banks[me.id] || null;
+      const currentTier = userBank ? BANK_TIERS.findIndex(t=>t.id===userBank.tierId) : -1;
+      const NITRO_EMOJI = '<:Nitro:1482656844655624192>';
+      const lines = BANK_TIERS.map((t,i) => {
+        if (i === 0 && !userBank) return `🏦 **${t.name}** — \`${t.cost.toLocaleString()}\` ${COIN_EMOJI} · Capacity: **${t.capacity}** coins ← Buy with \`/buy-bank\``;
+        if (i === currentTier+1 && userBank) return `⬆️ **${t.name}** — \`${t.cost.toLocaleString()}\` ${COIN_EMOJI} · Capacity: **${t.capacity}** coins ← Upgrade with \`/upgrade-bank\``;
+        if (i <= currentTier) return `✅ **${t.name}** — Capacity: **${t.capacity}** coins (owned)`;
+        return `🔒 **${t.name}** — \`${t.cost.toLocaleString()}\` ${COIN_EMOJI} · Capacity: **${t.capacity}** coins`;
+      }).join('\n');
+      const statusLine = userBank ? `Your bank: **${userBank.tierId ? BANK_TIERS.find(t=>t.id===userBank.tierId)?.name : 'Basic Bank'}** · Balance: **${userBank.balance}/${userBank.capacity}** ${COIN_EMOJI}` : 'You don\'t have a bank yet!';
+      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🏪 Server Shop — Bank').setDescription(`${statusLine}\n\n${lines}`).setFooter({text:'Buy: /buy-bank | Upgrade: /upgrade-bank | Deposit: /deposit | Withdraw: /withdraw'})]});
+    }
+
+    if (cmd==='buy-bank') {
+      const banks = await dbRead('banks');
+      if (banks[me.id]) return reply({embeds:[errEmbed('You already have a bank! Use `/upgrade-bank` to upgrade.')],flags:MessageFlags.Ephemeral});
+      const tier = BANK_TIERS[0];
+      const u = await getUser(me.id, me.username);
+      if (u.coins < tier.cost) return reply({embeds:[errEmbed(`You need **${tier.cost.toLocaleString()}** ${COIN_EMOJI} to buy a bank!`)],flags:MessageFlags.Ephemeral});
+      u.coins -= tier.cost;
+      await saveUser(u);
+      banks[me.id] = { tierId: tier.id, capacity: tier.capacity, balance: 0, boughtAt: Date.now() };
+      await dbWrite('banks', banks);
+      sendLog(client,{title:'🏦 Bank Purchased',color:0xF1C40F,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Tier',value:tier.name,inline:true},{name:'Cost',value:`${tier.cost} ${COIN_EMOJI}`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Bank Purchased!').setDescription(`You now have a **${tier.name}**!\n\nCapacity: **${tier.capacity}** ${COIN_EMOJI}\nBalance: **0** ${COIN_EMOJI}\n\nDeposit with \`/deposit <amount>\``)]});
+    }
+
+    if (cmd==='upgrade-bank') {
+      const banks = await dbRead('banks');
+      if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank yet! Use `/buy-bank` first.')],flags:MessageFlags.Ephemeral});
+      const currentIdx = BANK_TIERS.findIndex(t=>t.id===banks[me.id].tierId);
+      if (currentIdx === BANK_TIERS.length-1) return reply({embeds:[errEmbed('Your bank is already at max tier!')],flags:MessageFlags.Ephemeral});
+      const nextTier = BANK_TIERS[currentIdx+1];
+      const u = await getUser(me.id, me.username);
+      if (u.coins < nextTier.cost) return reply({embeds:[errEmbed(`You need **${nextTier.cost.toLocaleString()}** ${COIN_EMOJI} to upgrade!`)],flags:MessageFlags.Ephemeral});
+      u.coins -= nextTier.cost;
+      await saveUser(u);
+      banks[me.id].tierId = nextTier.id;
+      banks[me.id].capacity = nextTier.capacity;
+      await dbWrite('banks', banks);
+      sendLog(client,{title:'🏦 Bank Upgraded',color:0xF1C40F,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'New Tier',value:nextTier.name,inline:true},{name:'New Capacity',value:`${nextTier.capacity} ${COIN_EMOJI}`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Bank Upgraded!').setDescription(`Your bank is now **${nextTier.name}**!\n\nNew Capacity: **${nextTier.capacity}** ${COIN_EMOJI}\nCurrent Balance: **${banks[me.id].balance}** ${COIN_EMOJI}`)]});
+    }
+
+    if (cmd==='deposit') {
+      const banks = await dbRead('banks');
+      if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank! Buy one with `/buy-bank`.')],flags:MessageFlags.Ephemeral});
+      const bank = banks[me.id];
+      const u = await getUser(me.id, me.username);
+      if (u.coins <= 0) return reply({embeds:[errEmbed('You have no coins to deposit!')],flags:MessageFlags.Ephemeral});
+      const space = bank.capacity - bank.balance;
+      if (space <= 0) return reply({embeds:[errEmbed(`Your bank is full! (${bank.balance}/${bank.capacity})`)],flags:MessageFlags.Ephemeral});
+      const reqAmt = interaction.options.getInteger('amount');
+      const amount = reqAmt === 0 ? Math.min(u.coins, space) : Math.min(reqAmt, u.coins, space);
+      if (amount <= 0) return reply({embeds:[errEmbed('Invalid amount.')],flags:MessageFlags.Ephemeral});
+      u.coins -= amount;
+      bank.balance += amount;
+      await saveUser(u);
+      await dbWrite('banks', banks);
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Deposited!').addFields({name:'Deposited',value:`**${amount.toLocaleString()}** ${COIN_EMOJI}`,inline:true},{name:'Bank Balance',value:`**${bank.balance}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
+    }
+
+    if (cmd==='withdraw') {
+      const banks = await dbRead('banks');
+      if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank!')],flags:MessageFlags.Ephemeral});
+      const bank = banks[me.id];
+      if (bank.balance <= 0) return reply({embeds:[errEmbed('Your bank is empty!')],flags:MessageFlags.Ephemeral});
+      const reqAmt = interaction.options.getInteger('amount');
+      const amount = reqAmt === 0 ? bank.balance : Math.min(reqAmt, bank.balance);
+      if (amount <= 0) return reply({embeds:[errEmbed('Invalid amount.')],flags:MessageFlags.Ephemeral});
+      const u = await getUser(me.id, me.username);
+      bank.balance -= amount;
+      u.coins += amount;
+      await saveUser(u);
+      await dbWrite('banks', banks);
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Withdrawn!').addFields({name:'Withdrawn',value:`**${amount.toLocaleString()}** ${COIN_EMOJI}`,inline:true},{name:'Bank Balance',value:`**${bank.balance}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
+    }
+
+    if (cmd==='bank') {
+      const banks = await dbRead('banks');
+      if (!banks[me.id]) return reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🏦 No Bank').setDescription('You don\'t have a bank yet!\n\nBuy one from `/server-shop` with `/buy-bank`.')]});
+      const bank = banks[me.id];
+      const tier = BANK_TIERS.find(t=>t.id===bank.tierId)||BANK_TIERS[0];
+      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🏦 Your Bank').addFields({name:'Tier',value:tier.name,inline:true},{name:'Balance',value:`**${bank.balance.toLocaleString()}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${((await getUser(me.id,me.username)).coins).toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
+    }
+
+    if (cmd==='rob') {
+      const target = interaction.options.getUser('user');
+      if (target.id===me.id) return reply({embeds:[errEmbed('You can\'t rob yourself!')],flags:MessageFlags.Ephemeral});
+      if (target.bot) return reply({embeds:[errEmbed('You can\'t rob a bot!')],flags:MessageFlags.Ephemeral});
+      // Can't rob admins
+      const targetMember = await interaction.guild.members.fetch(target.id).catch(()=>null);
+      if (targetMember?.permissions.has(PermissionFlagsBits.Administrator)) return reply({embeds:[errEmbed('You can\'t rob an admin!')],flags:MessageFlags.Ephemeral});
+      // Check if target has a bank
+      const banks = await dbRead('banks');
+      if (banks[target.id]) return reply({embeds:[errEmbed(`<@${target.id}> has a bank — you can't rob them!`)],flags:MessageFlags.Ephemeral});
+      const victim = await getUser(target.id, target.username);
+      if (victim.coins <= 0) return reply({embeds:[errEmbed(`<@${target.id}> has no coins to steal!`)],flags:MessageFlags.Ephemeral});
+      // 60% success chance
+      const success = Math.random() < 0.60;
+      if (!success) {
+        sendLog(client,{title:'🔫 Rob Failed',color:0xED4245,fields:[{name:'Robber',value:`<@${me.id}>`,inline:true},{name:'Target',value:`<@${target.id}>`,inline:true},{name:'Result',value:'Failed — caught!',inline:true}]});
+        return reply({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('🚔 Caught!').setDescription(`You tried to rob <@${target.id}> but got caught! Better luck next time.`)]});
+      }
+      const stolen = Math.floor(victim.coins * 0.20);
+      if (stolen < 1) return reply({embeds:[errEmbed(`<@${target.id}> doesn't have enough coins to steal!`)],flags:MessageFlags.Ephemeral});
+      victim.coins -= stolen;
+      await saveUser(victim);
+      const robber = await getUser(me.id, me.username);
+      robber.coins += stolen;
+      await saveUser(robber);
+      sendLog(client,{title:'🔫 Rob Successful',color:0xF1C40F,fields:[{name:'Robber',value:`<@${me.id}>`,inline:true},{name:'Target',value:`<@${target.id}>`,inline:true},{name:'Stolen',value:`${stolen.toLocaleString()} ${COIN_EMOJI}`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('💰 Successful Rob!').setDescription(`You stole **${stolen.toLocaleString()}** ${COIN_EMOJI} from <@${target.id}>! (20% of their wallet)`).addFields({name:'Your Wallet',value:`**${robber.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
+    }
+
+
     if (cmd==='vouch') {
       const target = interaction.options.getUser('user');
       const comment = interaction.options.getString('comment') || null;
@@ -1336,6 +1652,361 @@ client.on('interactionCreate', async interaction => {
       await dbWrite('sab', arr);
       sendLog(client,{title:'🛍️ SAB Item Updated',color:0x9B59B6,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Item',value:item,inline:true},{name:'Stock',value:stock,inline:true},{name:'Price',value:`${price.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Worth',value:worth||'N/A',inline:true}]});
       return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ SAB Stock Updated').setDescription(`**${item}** | ${stock} | ${price.toLocaleString()} ${COIN_EMOJI}${worth ? ` | Worth: ${worth}` : ''}`)]});
+    }
+
+
+
+    // ══════════════════════════════════════════
+    //  CHAIR GAME
+    // ══════════════════════════════════════════
+    if (cmd==='chair-game') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      if (activeChairGame.has(interaction.guildId)) return reply({embeds:[errEmbed('A Chair Game is already running!')],flags:MessageFlags.Ephemeral});
+      const prize = interaction.options.getInteger('prize');
+      const gwId = `CG${Date.now()}`;
+      const joinMsg = await interaction.channel.send({
+        embeds:[new EmbedBuilder().setColor(0x3498DB).setTitle('🪑 Chair Game — Join Now!').setDescription('Click **Join** to enter the Chair Game!\n\nThe host will start the game when ready.').setFooter({text:`Prize: ${prize.toLocaleString()} coins for the winner`})],
+        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`cg_join_${gwId}`).setLabel('🪑 Join').setStyle(ButtonStyle.Primary))]
+      });
+      activeChairGame.set(interaction.guildId, { gwId, prize, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, joinMsgId: joinMsg.id, round: 0, safeColor: null });
+      sendLog(client,{title:'🪑 Chair Game Started',color:0x3498DB,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Prize',value:`${prize} coins`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Chair Game lobby posted! Use `/chair-next` to start rounds.')],flags:MessageFlags.Ephemeral});
+    }
+    if (cmd==='chair-next') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeChairGame.get(interaction.guildId);
+      if (!game) return reply({embeds:[errEmbed('No Chair Game running!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      if (game.players.size < 2) return interaction.editReply({embeds:[errEmbed('Need at least 2 players!')]});
+      game.round++;
+      const ch = await client.channels.fetch(game.channelId);
+      // Randomly decide: green (safe=click) or red (safe=don't click)
+      const isGreen = Math.random() < 0.5;
+      game.safeColor = isGreen ? 'green' : 'red';
+      game.clickedThisRound = new Set();
+      const roundId = `cgr_${game.gwId}_${game.round}`;
+      const color = isGreen ? 0x57F287 : 0xED4245;
+      const label = isGreen ? '✅ Click Me!' : '🛑 DO NOT Click!';
+      const desc  = isGreen ? '🟢 **GREEN ROUND** — Click the button to stay safe!\n\nPlayers who **do NOT click** are eliminated!' : '🔴 **RED ROUND** — DO NOT click the button!\n\nPlayers who **DO click** are eliminated!';
+      const roundMsg = await ch.send({
+        embeds:[new EmbedBuilder().setColor(color).setTitle(`🪑 Chair Game — Round ${game.round}`).setDescription(desc).setFooter({text:`${game.players.size} players remaining · 10 seconds!`})],
+        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(roundId).setLabel(label).setStyle(isGreen?ButtonStyle.Success:ButtonStyle.Danger))]
+      });
+      game.roundMsgId = roundMsg.id;
+      // After 10s, eliminate
+      setTimeout(async () => {
+        try {
+          const g = activeChairGame.get(interaction.guildId);
+          if (!g || g.round !== game.round) return;
+          const clicked = g.clickedThisRound || new Set();
+          let eliminated = new Set();
+          if (g.safeColor === 'green') { g.players.forEach(p => { if (!clicked.has(p)) eliminated.add(p); }); }
+          else                          { clicked.forEach(p => { if (g.players.has(p)) eliminated.add(p); }); }
+          eliminated.forEach(p => g.players.delete(p));
+          // Disable button
+          try { const m = await ch.messages.fetch(roundMsg.id); await m.edit({components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(roundId+'_done').setLabel(label).setStyle(isGreen?ButtonStyle.Success:ButtonStyle.Danger).setDisabled(true))]}); } catch {}
+          if (g.players.size <= 1) {
+            // Game over
+            activeChairGame.delete(interaction.guildId);
+            const winner = g.players.size === 1 ? [...g.players][0] : null;
+            if (winner) {
+              const u = await getUser(winner, 'unknown');
+              u.coins += g.prize; u.totalEarned = (u.totalEarned||0)+g.prize;
+              await saveUser(u);
+              sendLog(client,{title:'🪑 Chair Game Winner',color:0xF1C40F,fields:[{name:'Winner',value:`<@${winner}>`,inline:true},{name:'Prize',value:`${g.prize} coins`,inline:true},{name:'Rounds',value:`${g.round}`,inline:true}]});
+            }
+            await ch.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🪑 Chair Game Over!').setDescription(winner?`🏆 <@${winner}> wins **${g.prize}** ${COIN_EMOJI}!`:'Everyone was eliminated — no winner!').addFields({name:'Eliminated this round',value:eliminated.size?[...eliminated].map(p=>`<@${p}>`).join(' '):'None',inline:false})]});
+          } else {
+            const elimList = eliminated.size ? [...eliminated].map(p=>`<@${p}>`).join(' ') : 'Nobody';
+            await ch.send({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle(`🪑 Round ${g.round} Results`).setDescription(`**Eliminated:** ${elimList}\n**Remaining:** ${g.players.size} players\n\nHost: use \`/chair-next\` for next round.`)]});
+          }
+        } catch(e){ console.error('Chair round end error:',e.message); }
+      }, 10000);
+      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} started! Results in 10 seconds.`)]});
+    }
+
+    // ══════════════════════════════════════════
+    //  MAFIA
+    // ══════════════════════════════════════════
+    if (cmd==='mafia') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      if (activeMafia.has(interaction.guildId)) return reply({embeds:[errEmbed('A Mafia game is already running!')],flags:MessageFlags.Ephemeral});
+      const prize = interaction.options.getInteger('prize');
+      const numMurderers = interaction.options.getInteger('murderers')||1;
+      const gwId = `MF${Date.now()}`;
+      const joinMsg = await interaction.channel.send({
+        embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle('🔪 Mafia — Join Now!').setDescription('Click **Join** to enter Mafia!\n\nYou will be secretly assigned as **Murderer** or **Innocent**.\n\nHost will start when ready.').setFooter({text:`Prize: ${prize.toLocaleString()} coins for winners`})],
+        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`mf_join_${gwId}`).setLabel('🔪 Join').setStyle(ButtonStyle.Primary))]
+      });
+      activeMafia.set(interaction.guildId, { gwId, prize, numMurderers, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, joinMsgId: joinMsg.id, murderers: new Set(), round: 0, votes: new Map(), alive: new Set() });
+      sendLog(client,{title:'🔪 Mafia Started',color:0x9B59B6,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Prize',value:`${prize} coins`,inline:true},{name:'Murderers',value:`${numMurderers}`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Mafia lobby posted! Use `/mafia-start` once enough players join.')],flags:MessageFlags.Ephemeral});
+    }
+    if (cmd==='mafia-start') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeMafia.get(interaction.guildId);
+      if (!game) return reply({embeds:[errEmbed('No Mafia game in lobby!')],flags:MessageFlags.Ephemeral});
+      if (game.phase !== 'joining') return reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
+      if (game.players.size < game.numMurderers+2) return reply({embeds:[errEmbed(`Need at least ${game.numMurderers+2} players!`)],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      // Assign roles
+      const playerArr = [...game.players];
+      const shuffled = playerArr.sort(()=>Math.random()-0.5);
+      const murderers = new Set(shuffled.slice(0, game.numMurderers));
+      game.murderers = murderers;
+      game.alive = new Set(playerArr);
+      game.phase = 'night';
+      game.round = 1;
+      // DM everyone their role
+      for (const pid of playerArr) {
+        const isMurd = murderers.has(pid);
+        try {
+          const u = await client.users.fetch(pid);
+          const murdList = isMurd ? [...murderers].filter(m=>m!==pid).map(m=>`<@${m}>`).join(', ')||'Just you' : 'Unknown';
+          await u.send({embeds:[new EmbedBuilder()
+            .setColor(isMurd?0xED4245:0x57F287)
+            .setTitle(isMurd?'🔪 You are a MURDERER!':'😇 You are INNOCENT!')
+            .setDescription(isMurd?`You are a murderer! Other murderers: ${murdList}\n\nUse \`/mafia-kill @user\` to kill someone each round.`:'You are innocent! Find and vote out the murderers.\n\nUse \`/mafia-vote @user\` to vote who you think is the murderer.')
+          ]});
+        } catch {}
+      }
+      const ch = await client.channels.fetch(game.channelId);
+      await ch.send({embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle('🔪 Mafia — Round 1 Begins!').setDescription(`**${playerArr.length} players** have joined!\n\nCheck your DMs for your role!\n\n**Murderers:** Use \`/mafia-kill @user\`\n**Innocents:** Use \`/mafia-vote @user\`\n\nHost will end the round with \`/mafia-next\`.`).setFooter({text:`${murderers.size} murderer(s) among you...`})]});
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ Mafia Started').setDescription(`Roles assigned! Murderers: ${[...murderers].map(m=>`<@${m}>`).join(', ')}`)]});
+    }
+    if (cmd==='mafia-next') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeMafia.get(interaction.guildId);
+      if (!game || game.phase==='joining') return reply({embeds:[errEmbed('No active Mafia game!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const ch = await client.channels.fetch(game.channelId);
+      // Process kills
+      const kills = game.killVote ? [game.killVote] : [];
+      kills.forEach(p => game.alive.delete(p));
+      // Process votes — most voted non-murderer gets eliminated
+      const voteCounts = new Map();
+      game.votes.forEach(v => voteCounts.set(v,(voteCounts.get(v)||0)+1));
+      let topVoted = null, topCount = 0;
+      voteCounts.forEach((cnt,pid) => { if (cnt>topCount){topCount=cnt;topVoted=pid;} });
+      if (topVoted) game.alive.delete(topVoted);
+      // Check win conditions
+      const aliveMurds  = [...game.alive].filter(p=>game.murderers.has(p));
+      const aliveInno   = [...game.alive].filter(p=>!game.murderers.has(p));
+      const murdWin     = aliveInno.length===0;
+      const innoWin     = aliveMurds.length===0;
+      if (murdWin||innoWin||game.alive.size<2) {
+        activeMafia.delete(interaction.guildId);
+        const winners = innoWin ? aliveInno : [...game.murderers];
+        for (const w of winners) {
+          try { const u=await getUser(w,'unknown'); u.coins+=game.prize; u.totalEarned=(u.totalEarned||0)+game.prize; await saveUser(u); } catch {}
+        }
+        sendLog(client,{title:'🔪 Mafia Ended',color:0x9B59B6,fields:[{name:'Result',value:innoWin?'Innocents Win!':'Murderers Win!',inline:true},{name:'Winners',value:winners.map(w=>`<@${w}>`).join(' '),inline:false}]});
+        await ch.send({embeds:[new EmbedBuilder().setColor(innoWin?0x57F287:0xED4245).setTitle('🔪 Mafia — Game Over!').setDescription(`${innoWin?'😇 Innocents win! Murderers were caught!':'🔪 Murderers win! They eliminated all innocents!'}\n\n**Winners:** ${winners.map(w=>`<@${w}>`).join(' ')}\n**Prize:** ${game.prize} ${COIN_EMOJI} each!`)]});
+        return interaction.editReply({embeds:[okEmbed('Game ended!')]});
+      }
+      // Continue
+      game.round++; game.killVote=null; game.votes=new Map();
+      const killedStr = kills.map(k=>`<@${k}>`).join(' ')||'Nobody';
+      const votedStr  = topVoted?`<@${topVoted}>`:'Nobody';
+      await ch.send({embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle(`🔪 Mafia — Round ${game.round} Results`).setDescription(`**Killed last night:** ${killedStr}\n**Voted out:** ${votedStr}\n\n**Alive:** ${[...game.alive].map(p=>`<@${p}>`).join(' ')}\n\nNew round starts! Use \`/mafia-kill\` or \`/mafia-vote\` then host uses \`/mafia-next\`.`)]});
+      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} started!`)]});
+    }
+    if (cmd==='mafia-kill') {
+      const game = activeMafia.get(interaction.guildId);
+      if (!game || game.phase==='joining') return reply({embeds:[errEmbed('No active Mafia game!')],flags:MessageFlags.Ephemeral});
+      if (!game.murderers.has(me.id)) return reply({embeds:[errEmbed('You are not a murderer!')],flags:MessageFlags.Ephemeral});
+      const target = interaction.options.getUser('user');
+      if (!game.alive.has(target.id)) return reply({embeds:[errEmbed('That player is already eliminated!')],flags:MessageFlags.Ephemeral});
+      if (game.murderers.has(target.id)) return reply({embeds:[errEmbed('You cannot kill a fellow murderer!')],flags:MessageFlags.Ephemeral});
+      game.killVote = target.id;
+      return reply({embeds:[okEmbed(`You selected <@${target.id}> to be eliminated. Host will process at end of round.`)],flags:MessageFlags.Ephemeral});
+    }
+    if (cmd==='mafia-vote') {
+      const game = activeMafia.get(interaction.guildId);
+      if (!game || game.phase==='joining') return reply({embeds:[errEmbed('No active Mafia game!')],flags:MessageFlags.Ephemeral});
+      if (!game.alive.has(me.id)) return reply({embeds:[errEmbed('You are eliminated!')],flags:MessageFlags.Ephemeral});
+      const target = interaction.options.getUser('user');
+      if (target.id===me.id) return reply({embeds:[errEmbed('You cannot vote for yourself!')],flags:MessageFlags.Ephemeral});
+      if (!game.alive.has(target.id)) return reply({embeds:[errEmbed('That player is already eliminated!')],flags:MessageFlags.Ephemeral});
+      game.votes.set(me.id, target.id);
+      return reply({embeds:[okEmbed(`You voted for <@${target.id}>!`)],flags:MessageFlags.Ephemeral});
+    }
+
+    // ══════════════════════════════════════════
+    //  PICK A NUMBER
+    // ══════════════════════════════════════════
+    if (cmd==='pick-number') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      if (activePickNumber.has(interaction.guildId)) return reply({embeds:[errEmbed('A Pick a Number game is already running!')],flags:MessageFlags.Ephemeral});
+      const prize = interaction.options.getInteger('prize');
+      const gwId = `PN${Date.now()}`;
+      const joinMsg = await interaction.channel.send({
+        embeds:[new EmbedBuilder().setColor(0xF39C12).setTitle('🔢 Pick a Number — Join!').setDescription('Click **Join** to enter Pick a Number!\n\nYou will get a number grid (1–50). Pick one — if others pick the same number as you, you\'re eliminated!\n\nLast one standing wins!').setFooter({text:`Prize: ${prize.toLocaleString()} coins`})],
+        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`pn_join_${gwId}`).setLabel('🔢 Join').setStyle(ButtonStyle.Primary))]
+      });
+      activePickNumber.set(interaction.guildId, { gwId, prize, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, joinMsgId: joinMsg.id, round: 0, picks: new Map() });
+      sendLog(client,{title:'🔢 Pick a Number Started',color:0xF39C12,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Prize',value:`${prize} coins`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Pick a Number lobby posted! Use `/pick-number-round` to start a round.')],flags:MessageFlags.Ephemeral});
+    }
+    if (cmd==='pick-number-round') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activePickNumber.get(interaction.guildId);
+      if (!game) return reply({embeds:[errEmbed('No Pick a Number game running!')],flags:MessageFlags.Ephemeral});
+      if (game.players.size < 2) return reply({embeds:[errEmbed('Need at least 2 players!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      game.round++; game.picks = new Map(); game.phase = 'picking';
+      const ch = await client.channels.fetch(game.channelId);
+      const gwId = game.gwId; const round = game.round;
+      // Send number grid as buttons (5 rows of 5 = 25 numbers per message, do 2 messages for 1-50)
+      const makeRow = (start, gwId, round) => new ActionRowBuilder().addComponents(
+        ...[0,1,2,3,4].map(i => new ButtonBuilder().setCustomId(`pn_pick_${gwId}_${round}_${start+i}`).setLabel(`${start+i}`).setStyle(ButtonStyle.Secondary))
+      );
+      const rows1 = [1,6,11,16,21].map(s=>makeRow(s,gwId,round));
+      const rows2 = [26,31,36,41,46].map(s=>makeRow(s,gwId,round));
+      await ch.send({content:`🔢 **Round ${round} — Pick your number! (1-25)**`,components:rows1});
+      await ch.send({content:`🔢 **(26-50)**`,components:rows2});
+      await ch.send({embeds:[new EmbedBuilder().setColor(0xF39C12).setDescription(`⏰ **30 seconds to pick!** Players: ${[...game.players].map(p=>`<@${p}>`).join(' ')}`)]}); 
+      // After 30s process
+      setTimeout(async()=>{
+        try {
+          const g = activePickNumber.get(interaction.guildId);
+          if (!g || g.round!==round) return;
+          // Find duplicates
+          const pickCounts = new Map();
+          g.picks.forEach(n => pickCounts.set(n,(pickCounts.get(n)||0)+1));
+          const eliminated = new Set();
+          g.picks.forEach((n,pid) => { if ((pickCounts.get(n)||0)>1) eliminated.add(pid); });
+          // Also eliminate anyone who didn't pick
+          g.players.forEach(pid => { if (!g.picks.has(pid)) eliminated.add(pid); });
+          eliminated.forEach(p => g.players.delete(p));
+          if (g.players.size<=1) {
+            const winner = g.players.size===1?[...g.players][0]:null;
+            activePickNumber.delete(interaction.guildId);
+            if (winner) { const u=await getUser(winner,'unknown'); u.coins+=g.prize; u.totalEarned=(u.totalEarned||0)+g.prize; await saveUser(u); }
+            sendLog(client,{title:'🔢 Pick a Number Winner',color:0xF1C40F,fields:[{name:'Winner',value:winner?`<@${winner}>`:'No winner',inline:true},{name:'Prize',value:`${g.prize} coins`,inline:true}]});
+            await ch.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🔢 Pick a Number — Game Over!').setDescription(winner?`🏆 <@${winner}> wins **${g.prize}** ${COIN_EMOJI}!`:'Everyone was eliminated!')]});
+          } else {
+            const elimStr = eliminated.size?[...eliminated].map(p=>`<@${p}>`).join(' '):'Nobody';
+            await ch.send({embeds:[new EmbedBuilder().setColor(0xF39C12).setTitle(`🔢 Round ${round} Results`).setDescription(`**Eliminated:** ${elimStr}\n**Remaining:** ${[...g.players].map(p=>`<@${p}>`).join(' ')}\n\nHost: use \`/pick-number-round\` for next round!`)]});
+          }
+        } catch(e){console.error('PN round error:',e.message);}
+      },30000);
+      return interaction.editReply({embeds:[okEmbed(`Round ${round} started! 30 seconds to pick.`)]});
+    }
+
+    // ══════════════════════════════════════════
+    //  GREENTEA (3 chances per person, 3 rounds)
+    // ══════════════════════════════════════════
+    if (cmd==='greentea') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      if (activeGreentea.has(interaction.guildId)) return reply({embeds:[errEmbed('A Greentea game is already running!')],flags:MessageFlags.Ephemeral});
+      const letters = LETTER_POOLS[Math.floor(Math.random()*LETTER_POOLS.length)];
+      const prize   = interaction.options.getInteger('prize');
+      const gwId    = `GT${Date.now()}`;
+      const joinMsg = await interaction.channel.send({
+        embeds:[new EmbedBuilder().setColor(0x2ECC71).setTitle('🍵 Greentea — Join!').setDescription(`Click **Join** to enter Greentea!\n\n📝 Name something starting with **"${letters}"**\nYou get **3 chances** per round.\nIf you can't name one — you're eliminated!`).setFooter({text:`Prize: ${prize.toLocaleString()} coins for winner`})],
+        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`gt_join_${gwId}`).setLabel('🍵 Join').setStyle(ButtonStyle.Primary))]
+      });
+      activeGreentea.set(interaction.guildId, { gwId, letters, prize, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, round: 0, answers: new Map(), chances: new Map(), usedWords: new Set() });
+      sendLog(client,{title:'🍵 Greentea Started',color:0x2ECC71,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Letters',value:letters,inline:true},{name:'Prize',value:`${prize} coins`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Greentea lobby posted! Use `/greentea-round` to start.')],flags:MessageFlags.Ephemeral});
+    }
+    if (cmd==='greentea-round') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeGreentea.get(interaction.guildId);
+      if (!game) return reply({embeds:[errEmbed('No Greentea game running!')],flags:MessageFlags.Ephemeral});
+      if (game.players.size < 2) return reply({embeds:[errEmbed('Need at least 2 players!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      game.round++; game.answers = new Map(); game.chances = new Map();
+      game.players.forEach(p => game.chances.set(p, 3));
+      game.phase = 'answering';
+      const ch = await client.channels.fetch(game.channelId);
+      await ch.send({embeds:[new EmbedBuilder().setColor(0x2ECC71).setTitle(`🍵 Greentea — Round ${game.round}`).setDescription(`Name something starting with **"${game.letters}"**!\n\nType your answer in this channel.\nYou have **3 chances** — repeated or invalid words don't count!\n\nPlayers: ${[...game.players].map(p=>`<@${p}>`).join(' ')}`).setFooter({text:'Host: /greentea-next to end round and eliminate those who failed'})]});
+      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} started!`)]});
+    }
+    if (cmd==='greentea-next') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeGreentea.get(interaction.guildId);
+      if (!game || game.phase!=='answering') return reply({embeds:[errEmbed('No active Greentea round!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const ch = await client.channels.fetch(game.channelId);
+      // Eliminate players who used all chances without a valid answer
+      const eliminated = new Set();
+      game.players.forEach(p => { if (!game.answers.has(p)) eliminated.add(p); });
+      eliminated.forEach(p => game.players.delete(p));
+      game.phase = 'waiting';
+      if (game.players.size <= 1) {
+        const winner = game.players.size===1?[...game.players][0]:null;
+        activeGreentea.delete(interaction.guildId);
+        if (winner) { const u=await getUser(winner,'unknown'); u.coins+=game.prize; u.totalEarned=(u.totalEarned||0)+game.prize; await saveUser(u); }
+        sendLog(client,{title:'🍵 Greentea Winner',color:0x2ECC71,fields:[{name:'Winner',value:winner?`<@${winner}>`:'No winner',inline:true},{name:'Prize',value:`${game.prize} coins`,inline:true}]});
+        await ch.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🍵 Greentea — Game Over!').setDescription(winner?`🏆 <@${winner}> wins **${game.prize}** ${COIN_EMOJI}!`:'Everyone was eliminated!')]});
+      } else {
+        const elimStr = eliminated.size?[...eliminated].map(p=>`<@${p}>`).join(' '):'Nobody';
+        await ch.send({embeds:[new EmbedBuilder().setColor(0x2ECC71).setTitle(`🍵 Round ${game.round} Results`).setDescription(`**Eliminated:** ${elimStr}\n**Still in:** ${[...game.players].map(p=>`<@${p}>`).join(' ')}\n\nHost: \`/greentea-round\` for next round!`)]});
+      }
+      return interaction.editReply({embeds:[okEmbed('Round ended!')]});
+    }
+
+    // ══════════════════════════════════════════
+    //  BLACKTEA (5 rounds, points system)
+    // ══════════════════════════════════════════
+    if (cmd==='blacktea') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      if (activeBlacktea.has(interaction.guildId)) return reply({embeds:[errEmbed('A Blacktea game is already running!')],flags:MessageFlags.Ephemeral});
+      const letters = LETTER_POOLS[Math.floor(Math.random()*LETTER_POOLS.length)];
+      const prize   = interaction.options.getInteger('prize');
+      const gwId    = `BT${Date.now()}`;
+      const joinMsg = await interaction.channel.send({
+        embeds:[new EmbedBuilder().setColor(0x1A1A2E).setTitle('🖤 Blacktea — Join!').setDescription(`Click **Join** to enter Blacktea!\n\n📝 **Everyone** must name something starting with **"${letters}"**\n🏆 1st = 3pts | 2nd = 2pts | 3rd = 1pt\n5 rounds — most points wins the prize!`).setFooter({text:`Prize: ${prize.toLocaleString()} coins for winner`})],
+        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`bt_join_${gwId}`).setLabel('🖤 Join').setStyle(ButtonStyle.Primary))]
+      });
+      activeBlacktea.set(interaction.guildId, { gwId, letters, prize, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, round: 0, maxRounds: 5, answers: new Map(), points: new Map(), usedWords: new Set() });
+      sendLog(client,{title:'🖤 Blacktea Started',color:0x1A1A2E,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Letters',value:letters,inline:true},{name:'Prize',value:`${prize} coins`,inline:true}]});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Blacktea lobby posted! Use `/blacktea-round` to start.')],flags:MessageFlags.Ephemeral});
+    }
+    if (cmd==='blacktea-round') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeBlacktea.get(interaction.guildId);
+      if (!game) return reply({embeds:[errEmbed('No Blacktea game running!')],flags:MessageFlags.Ephemeral});
+      if (game.players.size < 2) return reply({embeds:[errEmbed('Need at least 2 players!')],flags:MessageFlags.Ephemeral});
+      if (game.round >= game.maxRounds) return reply({embeds:[errEmbed('All 5 rounds done! Use `/blacktea-end`.')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      game.round++; game.answers = new Map(); game.phase = 'answering';
+      game.players.forEach(p => { if (!game.points.has(p)) game.points.set(p,0); });
+      const ch = await client.channels.fetch(game.channelId);
+      await ch.send({embeds:[new EmbedBuilder().setColor(0x1A1A2E).setTitle(`🖤 Blacktea — Round ${game.round}/5`).setDescription(`Name something starting with **"${game.letters}"**!\n\nEveryone must answer — type in this channel!\n🥇 1st = 3pts | 🥈 2nd = 2pts | 🥉 3rd = 1pt\n\nPlayers: ${[...game.players].map(p=>`<@${p}>`).join(' ')}`).setFooter({text:'Host: /blacktea-next to score this round'})]});
+      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} started!`)]});
+    }
+    if (cmd==='blacktea-next') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      const game = activeBlacktea.get(interaction.guildId);
+      if (!game || game.phase!=='answering') return reply({embeds:[errEmbed('No active Blacktea round!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const ch = await client.channels.fetch(game.channelId);
+      game.phase = 'waiting';
+      // Award points: order answers were submitted
+      const ordered = [...game.answers.entries()].sort((a,b)=>a[1].at-b[1].at);
+      const pts = [3,2,1];
+      const roundResults = [];
+      ordered.slice(0,3).forEach(([pid,ans],i) => {
+        const cur = game.points.get(pid)||0;
+        game.points.set(pid, cur+pts[i]);
+        roundResults.push(`${['🥇','🥈','🥉'][i]} <@${pid}> — "${ans.word}" (+${pts[i]}pts)`);
+      });
+      // No answer = 0 pts (already handled)
+      const scoreBoard = [...game.points.entries()].sort((a,b)=>b[1]-a[1]).map(([pid,pts],i)=>`**${i+1}.** <@${pid}> — ${pts}pts`).join('\n');
+      if (game.round >= game.maxRounds) {
+        // Final round — end game
+        const winner = [...game.points.entries()].sort((a,b)=>b[1]-a[1])[0];
+        activeBlacktea.delete(interaction.guildId);
+        if (winner) { const u=await getUser(winner[0],'unknown'); u.coins+=game.prize; u.totalEarned=(u.totalEarned||0)+game.prize; await saveUser(u); }
+        sendLog(client,{title:'🖤 Blacktea Winner',color:0x1A1A2E,fields:[{name:'Winner',value:winner?`<@${winner[0]}>`: 'No winner',inline:true},{name:'Prize',value:`${game.prize} coins`,inline:true}]});
+        await ch.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🖤 Blacktea — Game Over!').setDescription(`**Round ${game.round} Results:**\n${roundResults.join('\n')||'Nobody answered!'}\n\n**Final Scoreboard:**\n${scoreBoard}\n\n🏆 ${winner?`<@${winner[0]}> wins **${game.prize}** ${COIN_EMOJI}!`:'No winner!'}`)]});
+      } else {
+        await ch.send({embeds:[new EmbedBuilder().setColor(0x1A1A2E).setTitle(`🖤 Round ${game.round}/5 Results`).setDescription(`**Answers:**\n${roundResults.join('\n')||'Nobody answered!'}\n\n**Scoreboard:**\n${scoreBoard}\n\nHost: \`/blacktea-round\` for round ${game.round+1}!`)]});
+      }
+      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} scored!`)]});
     }
 
 
