@@ -92,7 +92,7 @@ const robCooldowns = new Map(); // userId -> lastRobTimestamp
 
 // Bank tiers: { id, name, cost, capacity }
 const BANK_TIERS = [
-  { id: 'bank_t1',  name: 'Basic Bank',   cost: 500, capacity: 1500 },
+  { id: 'bank_t1',  name: 'Basic Bank',   cost: 1, capacity: 1500 },
   { id: 'bank_t2',  name: 'Bank Tier 2',  cost: 500, capacity: 2500 },
   { id: 'bank_t3',  name: 'Bank Tier 3',  cost: 500, capacity: 3500 },
   { id: 'bank_t4',  name: 'Bank Tier 4',  cost: 500, capacity: 4500 },
