@@ -92,7 +92,7 @@ const robCooldowns = new Map(); // userId -> lastRobTimestamp
 
 // Bank tiers: { id, name, cost, capacity }
 const BANK_TIERS = [
-  { id: 'bank_t1',  name: 'Basic Bank',   cost: 1, capacity: 1500 },
+  { id: 'bank_t1',  name: 'Basic Bank',   cost: 500, capacity: 1500 },
   { id: 'bank_t2',  name: 'Bank Tier 2',  cost: 500, capacity: 2500 },
   { id: 'bank_t3',  name: 'Bank Tier 3',  cost: 500, capacity: 3500 },
   { id: 'bank_t4',  name: 'Bank Tier 4',  cost: 500, capacity: 4500 },
@@ -511,6 +511,25 @@ client.once('ready', async () => {
       console.log('✅ Claims bin is clean');
     }
   } catch (e) { console.error('Claims purge error:', e.message); }
+  // Refund all bank balances back to wallets
+  try {
+    const banks = await dbRead('banks');
+    const users = await dbRead('users');
+    let refundCount = 0;
+    for (const [uid, bank] of Object.entries(banks)) {
+      if (bank && bank.balance > 0) {
+        if (!users[uid]) users[uid] = { id: uid, username: 'Unknown', coins: 0, totalEarned: 0, lastDaily: null, inventory: [], redeemedCodes: [] };
+        users[uid].coins = (users[uid].coins || 0) + bank.balance;
+        bank.balance = 0;
+        refundCount++;
+      }
+    }
+    if (refundCount > 0) {
+      await dbWrite('users', users);
+      await dbWrite('banks', banks);
+      console.log(`✅ Refunded bank balances for ${refundCount} user(s)`);
+    } else { console.log('✅ No bank balances to refund'); }
+  } catch (e) { console.error('Bank refund error:', e.message); }
   // Warm codes cache & log how many saved codes exist
   try {
     const codes = await dbRead('codes');
@@ -962,9 +981,11 @@ client.on('interactionCreate', async interaction => {
     if (!game) return interaction.reply({embeds:[errEmbed('No active game found. Start one with `/blackjack`.')],flags:MessageFlags.Ephemeral});
     if (game.userId !== interaction.user.id) return interaction.reply({embeds:[errEmbed("This isn't your game!")],flags:MessageFlags.Ephemeral});
 
-    const { drawCard, cardVal, handTotal, fmtCard, bet } = game;
+    const { bet } = game;
+    const SUITS_BJ=['♠️','♥️','♦️','♣️'],VALS_BJ=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    function drawCard(){return {suit:SUITS_BJ[Math.floor(Math.random()*4)],val:VALS_BJ[Math.floor(Math.random()*13)]};}
     function fmtC(c){return `${c.val}${c.suit}`;}
-    function total(hand){let t=hand.reduce((s,c)=>s+cardVal(c),0),a=hand.filter(c=>c.val==='A').length;while(t>21&&a>0){t-=10;a--;}return t;}
+    function total(hand){let t=hand.reduce((s,c)=>s+(['J','Q','K'].includes(c.val)?10:c.val==='A'?11:parseInt(c.val)),0),a=hand.filter(c=>c.val==='A').length;while(t>21&&a>0){t-=10;a--;}return t;}
     function bjEmbed(status) {
       const pt=total(game.player), dt=total(game.dealer);
       const dealerDisplay = status==='playing' ? `${fmtC(game.dealer[0])} 🂠` : game.dealer.map(fmtC).join(' ');
@@ -1480,6 +1501,7 @@ client.on('interactionCreate', async interaction => {
     //  SERVER SHOP (Bank & Upgrades)
     // ══════════════════════════════════════════
     if (cmd==='server-shop') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('Server shop is only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       const userBank = banks[me.id] || null;
       const currentTier = userBank ? BANK_TIERS.findIndex(t=>t.id===userBank.tierId) : -1;
@@ -1495,7 +1517,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='buy-bank') {
-      if (isTestSrv) return reply({embeds:[errEmbed('Bank is disabled in the test server.')],flags:MessageFlags.Ephemeral});
+      if (!isTestSrv) return reply({embeds:[errEmbed('Banks are only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       if (banks[me.id]) return reply({embeds:[errEmbed('You already have a bank! Use `/upgrade-bank` to upgrade.')],flags:MessageFlags.Ephemeral});
       const tier = BANK_TIERS[0];
@@ -1510,6 +1532,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='upgrade-bank') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('Banks are only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank yet! Use `/buy-bank` first.')],flags:MessageFlags.Ephemeral});
       const currentIdx = BANK_TIERS.findIndex(t=>t.id===banks[me.id].tierId);
@@ -1561,6 +1584,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='bank') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('Banks are only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       if (!banks[me.id]) return reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🏦 No Bank').setDescription('You don\'t have a bank yet!\n\nBuy one from `/server-shop` with `/buy-bank`.')]});
       const bank = banks[me.id];
@@ -1569,8 +1593,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='rob') {
-      // Block testers from robbing
-      if (isTestSrv) return reply({embeds:[errEmbed('Robbing is disabled in the test server.')],flags:MessageFlags.Ephemeral});
+      // Rob only available in test server
+      if (!isTestSrv) return reply({embeds:[errEmbed('Robbing is not available here!')],flags:MessageFlags.Ephemeral});
       const target = interaction.options.getUser('user');
       if (target.id===me.id) return reply({embeds:[errEmbed('You cannot rob yourself!')],flags:MessageFlags.Ephemeral});
       if (target.bot) return reply({embeds:[errEmbed('You cannot rob a bot!')],flags:MessageFlags.Ephemeral});
@@ -2244,6 +2268,7 @@ client.on('interactionCreate', async interaction => {
       const u   = await getUser(me.id, me.username);
       if (u.coins < bet) return reply({embeds:[errEmbed(`You only have **${u.coins.toLocaleString()}** ${COIN_EMOJI}!`)],flags:MessageFlags.Ephemeral});
       if (activeBlackjack.has(me.id)) return reply({embeds:[errEmbed('You already have a game in progress!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply();
 
       const SUITS  = ['♠️','♥️','♦️','♣️'];
       const VALUES = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
@@ -2279,7 +2304,7 @@ client.on('interactionCreate', async interaction => {
 
       const playerHand = [drawCard(), drawCard()];
       const dealerHand = [drawCard(), drawCard()];
-      const game = { player: playerHand, dealer: dealerHand, bet, userId: me.id, drawCard, cardVal, handTotal, fmtCard };
+      const game = { player: playerHand, dealer: dealerHand, bet, userId: me.id };
       activeBlackjack.set(me.id, game);
 
       const pt = handTotal(playerHand);
@@ -2294,10 +2319,10 @@ client.on('interactionCreate', async interaction => {
         const finalEmbed = bjEmbed(game, push?'push':'win');
         if (!push) finalEmbed.addFields({name:'Won',value:`**${Math.floor(bet*1.5).toLocaleString()}** ${COIN_EMOJI} (Blackjack 3:2!)`,inline:true},{name:'Balance',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true});
         else finalEmbed.addFields({name:'Result',value:'Push — bet returned',inline:true});
-        return reply({embeds:[finalEmbed], components:[bjButtons(true)]});
+        return interaction.editReply({embeds:[finalEmbed], components:[bjButtons(true)]});
       }
 
-      return reply({embeds:[bjEmbed(game,'playing')], components:[bjButtons()]});
+      return interaction.editReply({embeds:[bjEmbed(game,'playing')], components:[bjButtons()]});
     }
 
     if (cmd==='doubleornothing') {
