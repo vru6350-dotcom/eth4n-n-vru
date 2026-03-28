@@ -8,6 +8,31 @@ const {
 } = require('discord.js');
 const fetch = require('node-fetch');
 require('dotenv').config();
+// ── Blackjack helpers ──
+const _BJS=['♠️','♥️','♦️','♣️'],_BJV=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+function bjDraw(){return{suit:_BJS[Math.floor(Math.random()*4)],val:_BJV[Math.floor(Math.random()*13)]};}
+function bjFmt(c){return c.val+c.suit;}
+function bjTotal(h){let t=h.reduce((s,c)=>s+(['J','Q','K'].includes(c.val)?10:c.val==='A'?11:parseInt(c.val)),0),a=h.filter(c=>c.val==='A').length;while(t>21&&a>0){t-=10;a--;}return t;}
+function bjEmbed(game,status){
+  
+  const pt=bjTotal(game.player),dt=bjTotal(game.dealer);
+  const dd=status==='playing'?bjFmt(game.dealer[0])+' 🂠':game.dealer.map(bjFmt).join(' ');
+  const dv=status==='playing'?'?':dt;
+  const col=status==='win'?0x57F287:status==='push'?0xFEE75C:status==='playing'?0x5865F2:0xED4245;
+  const ttl=status==='playing'?'🃏 Blackjack':status==='win'?'🃏 You Win! 🎉':status==='push'?'🃏 Push!':'🃏 You Lose!';
+  return new EmbedBuilder().setColor(col).setTitle(ttl).addFields(
+    {name:'🏦 Dealer ('+dv+')',value:dd||'—',inline:false},
+    {name:'🧑 Your Hand ('+pt+')',value:game.player.map(bjFmt).join(' ')||'—',inline:false},
+    {name:'Bet',value:'**'+game.bet.toLocaleString()+'** '+COIN_EMOJI,inline:true}
+  );
+}
+function bjButtons(dis=false){
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('bj_hit').setLabel('👊 Hit').setStyle(ButtonStyle.Primary).setDisabled(dis),
+    new ButtonBuilder().setCustomId('bj_stand').setLabel('✋ Stand').setStyle(ButtonStyle.Secondary).setDisabled(dis)
+  );
+}
+
 
 async function safeFetch(url, options = {}, retries = 3) {
   try {
@@ -78,30 +103,6 @@ const activeGTN = new Map();
 const activeBlackjack = new Map();
 
 // ── Blackjack helpers (top-level so both slash + button handler can use them) ──
-const BJ_SUITS = ['♠️','♥️','♦️','♣️'];
-const BJ_VALS  = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-function bjDraw()    { return { suit: BJ_SUITS[Math.floor(Math.random()*4)], val: BJ_VALS[Math.floor(Math.random()*13)] }; }
-function bjFmt(c)    { return c.val + c.suit; }
-function bjVal(c)    { return ['J','Q','K'].includes(c.val) ? 10 : c.val==='A' ? 11 : parseInt(c.val); }
-function bjTotal(hand) { let t=hand.reduce((s,c)=>s+bjVal(c),0), a=hand.filter(c=>c.val==='A').length; while(t>21&&a>0){t-=10;a--;} return t; }
-function bjEmbed(game, status) {
-  const pt = bjTotal(game.player), dt = bjTotal(game.dealer);
-  const dealerDisplay = status==='playing' ? bjFmt(game.dealer[0])+' 🂠' : game.dealer.map(bjFmt).join(' ');
-  const dealerVal = status==='playing' ? '?' : dt;
-  const color = status==='win'?0x57F287:status==='push'?0xFEE75C:status==='playing'?0x5865F2:0xED4245;
-  const title = status==='playing'?'🃏 Blackjack — Your Turn':status==='win'?'🃏 You Win! 🎉':status==='push'?'🃏 Push!':'🃏 You Lose!';
-  return new EmbedBuilder().setColor(color).setTitle(title).addFields(
-    { name:`🏦 Dealer (${dealerVal})`, value: dealerDisplay||'—', inline: false },
-    { name:`🧑 Your Hand (${pt})`,      value: game.player.map(bjFmt).join(' ')||'—', inline: false },
-    { name: 'Bet', value:`**${game.bet.toLocaleString()}** `, inline: true }
-  );
-}
-function bjButtons(disabled=false) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('bj_hit').setLabel('👊 Hit').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-    new ButtonBuilder().setCustomId('bj_stand').setLabel('✋ Stand').setStyle(ButtonStyle.Secondary).setDisabled(disabled)
-  );
-}
 
 // ── Game state maps ──
 const activeChairGame  = new Map(); // guildId -> state
@@ -1484,7 +1485,6 @@ client.on('interactionCreate', async interaction => {
     //  SERVER SHOP (Bank & Upgrades)
     // ══════════════════════════════════════════
     if (cmd==='server-shop') {
-      if (!isTestSrv) return reply({embeds:[errEmbed('Server shop is only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       const userBank = banks[me.id] || null;
       const currentTier = userBank ? BANK_TIERS.findIndex(t=>t.id===userBank.tierId) : -1;
@@ -1500,7 +1500,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='buy-bank') {
-      if (!isTestSrv) return reply({embeds:[errEmbed('Banks are only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       if (banks[me.id]) return reply({embeds:[errEmbed('You already have a bank! Use `/upgrade-bank` to upgrade.')],flags:MessageFlags.Ephemeral});
       const tier = BANK_TIERS[0];
@@ -1515,7 +1514,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='upgrade-bank') {
-      if (!isTestSrv) return reply({embeds:[errEmbed('Banks are only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank yet! Use `/buy-bank` first.')],flags:MessageFlags.Ephemeral});
       const currentIdx = BANK_TIERS.findIndex(t=>t.id===banks[me.id].tierId);
@@ -1567,7 +1565,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='bank') {
-      if (!isTestSrv) return reply({embeds:[errEmbed('Banks are only available in the test server!')],flags:MessageFlags.Ephemeral});
       const banks = await dbRead('banks');
       if (!banks[me.id]) return reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🏦 No Bank').setDescription('You don\'t have a bank yet!\n\nBuy one from `/server-shop` with `/buy-bank`.')]});
       const bank = banks[me.id];
@@ -1577,7 +1574,6 @@ client.on('interactionCreate', async interaction => {
 
     if (cmd==='rob') {
       // Rob only available in test server
-      if (!isTestSrv) return reply({embeds:[errEmbed('Robbing is not available here!')],flags:MessageFlags.Ephemeral});
       const target = interaction.options.getUser('user');
       if (target.id===me.id) return reply({embeds:[errEmbed('You cannot rob yourself!')],flags:MessageFlags.Ephemeral});
       if (target.bot) return reply({embeds:[errEmbed('You cannot rob a bot!')],flags:MessageFlags.Ephemeral});
