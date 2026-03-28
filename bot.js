@@ -1597,7 +1597,10 @@ client.on('interactionCreate', async interaction => {
         sendLog(client,{title:'🔫 Rob Failed',color:0xED4245,fields:[{name:'Robber',value:`<@${me.id}>`,inline:true},{name:'Target',value:`<@${target.id}>`,inline:true},{name:'Result',value:'Failed — caught!',inline:true}]});
         return reply({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('🚔 Caught!').setDescription(`You tried to rob <@${target.id}> but got caught!\n\nNext rob attempt: ${ts(Date.now()+robCd)}`)]});
       }
-      const stolen = Math.floor(victim.coins * 0.30);
+      // Steal between 50-100 coins, or less if they dont have enough
+      const maxSteal = Math.min(victim.coins, 100);
+      const minSteal = Math.min(victim.coins, 50);
+      const stolen = minSteal >= maxSteal ? minSteal : Math.floor(Math.random() * (maxSteal - minSteal + 1)) + minSteal;
       if (stolen < 1) return reply({embeds:[errEmbed(`<@${target.id}> doesn't have enough coins to steal!`)],flags:MessageFlags.Ephemeral});
       victim.coins -= stolen;
       await saveUser(victim);
