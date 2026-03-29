@@ -92,7 +92,7 @@ function isModerator(member) {
 //  HARDCODED PERMANENT CODES (always exist)
 // ══════════════════════════════════════════
 const PERMANENT_CODES = {
-  'Secret': { coins: 25, description: 'HOW DO YOU KNOW THIS CODE? ITS SUPPOSED TO BE A SECRET!' },
+  'RELEASE': { coins: 25, description: '🎉 Launch reward' },
   // LOOTDROP: special 1-claim mystery box, reset by admin each drop
 };
 
@@ -115,7 +115,6 @@ const activeBlacktea   = new Map(); // guildId -> state
 // { coins, claimedBy: null|userId }
 let activeLootDrop = null;
 const activeGiveaways = new Map();
-const robCooldowns = new Map(); // userId -> lastRobTimestamp
 
 // Bank tiers: { id, name, cost, capacity }
 const BANK_TIERS = [
@@ -468,7 +467,6 @@ const slashDefs = [
   new SCB().setName('server-shop').setDescription('View the server shop (bank & upgrades)'),
   new SCB().setName('deposit').setDescription('Deposit coins into your bank').addIntegerOption(o=>o.setName('amount').setDescription('Amount to deposit (or 0 for max)').setRequired(true).setMinValue(0)),
   new SCB().setName('withdraw').setDescription('Withdraw coins from your bank').addIntegerOption(o=>o.setName('amount').setDescription('Amount to withdraw (or 0 for all)').setRequired(true).setMinValue(0)),
-  new SCB().setName('rob').setDescription('Rob another user (if they have no bank)').addUserOption(o=>o.setName('user').setDescription('User to rob').setRequired(true)),
   new SCB().setName('bank').setDescription('Check your bank balance'),
   new SCB().setName('buy-bank').setDescription('Buy a bank from the server shop'),
   new SCB().setName('upgrade-bank').setDescription('Upgrade your bank to the next tier'),
@@ -538,24 +536,30 @@ client.once('ready', async () => {
       console.log('✅ Claims bin is clean');
     }
   } catch (e) { console.error('Claims purge error:', e.message); }
-  // Refund all bank balances back to wallets
+  // Refund bank balances + purchase/upgrade costs back to wallets, then wipe banks
   try {
     const banks = await dbRead('banks');
     const users = await dbRead('users');
     let refundCount = 0;
     for (const [uid, bank] of Object.entries(banks)) {
-      if (bank && bank.balance > 0) {
-        if (!users[uid]) users[uid] = { id: uid, username: 'Unknown', coins: 0, totalEarned: 0, lastDaily: null, inventory: [], redeemedCodes: [] };
-        users[uid].coins = (users[uid].coins || 0) + bank.balance;
-        bank.balance = 0;
-        refundCount++;
-      }
+      if (!bank) continue;
+      if (!users[uid]) users[uid] = { id: uid, username: 'Unknown', coins: 0, totalEarned: 0, lastDaily: null, inventory: [], redeemedCodes: [] };
+      // Find the tier index to calculate total spent on upgrades
+      const tierIdx = BANK_TIERS.findIndex(t => t.id === bank.tierId);
+      // 500 to buy + 500 per upgrade = 500 * (tierIdx + 1)
+      const totalSpent = 500 * (tierIdx + 1);
+      // Refund: coins stored in bank + all coins spent on bank & upgrades
+      const totalRefund = (bank.balance || 0) + totalSpent;
+      users[uid].coins = (users[uid].coins || 0) + totalRefund;
+      refundCount++;
+      console.log(`  Refunding <${uid}>: ${bank.balance} stored + ${totalSpent} spent = ${totalRefund} coins`);
     }
+    // Wipe entire banks bin clean
+    await dbWrite('banks', {});
     if (refundCount > 0) {
       await dbWrite('users', users);
-      await dbWrite('banks', banks);
-      console.log(`✅ Refunded bank balances for ${refundCount} user(s)`);
-    } else { console.log('✅ No bank balances to refund'); }
+      console.log(`✅ Fully refunded ${refundCount} bank account(s) — banks wiped`);
+    } else { console.log('✅ No bank accounts to refund'); }
   } catch (e) { console.error('Bank refund error:', e.message); }
   // Warm codes cache & log how many saved codes exist
   try {
@@ -1572,44 +1576,6 @@ client.on('interactionCreate', async interaction => {
       return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🏦 Your Bank').addFields({name:'Tier',value:tier.name,inline:true},{name:'Balance',value:`**${bank.balance.toLocaleString()}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${((await getUser(me.id,me.username)).coins).toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
     }
 
-    if (cmd==='rob') {
-      // Rob only available in test server
-      const target = interaction.options.getUser('user');
-      if (target.id===me.id) return reply({embeds:[errEmbed('You cannot rob yourself!')],flags:MessageFlags.Ephemeral});
-      if (target.bot) return reply({embeds:[errEmbed('You cannot rob a bot!')],flags:MessageFlags.Ephemeral});
-      // 1hr cooldown
-      const lastRob = robCooldowns.get(me.id)||0;
-      const robCd = 60*60*1000;
-      if (Date.now()-lastRob < robCd) return reply({embeds:[errEmbed(`You can rob again ${ts(lastRob+robCd)}!`)],flags:MessageFlags.Ephemeral});
-      // Can't rob admins
-      const targetMember = await interaction.guild.members.fetch(target.id).catch(()=>null);
-      if (targetMember?.permissions.has(PermissionFlagsBits.Administrator)) return reply({embeds:[errEmbed('You cannot rob an admin!')],flags:MessageFlags.Ephemeral});
-      // Check if target has a bank
-      const banks = await dbRead('banks');
-      if (banks[target.id]) return reply({embeds:[errEmbed(`<@${target.id}> has a bank — you can't rob them!`)],flags:MessageFlags.Ephemeral});
-      const victim = await getUser(target.id, target.username);
-      if (victim.coins <= 0) return reply({embeds:[errEmbed(`<@${target.id}> has no coins to steal!`)],flags:MessageFlags.Ephemeral});
-      // Set cooldown immediately
-      robCooldowns.set(me.id, Date.now());
-      // 60% success chance
-      const success = Math.random() < 0.60;
-      if (!success) {
-        sendLog(client,{title:'🔫 Rob Failed',color:0xED4245,fields:[{name:'Robber',value:`<@${me.id}>`,inline:true},{name:'Target',value:`<@${target.id}>`,inline:true},{name:'Result',value:'Failed — caught!',inline:true}]});
-        return reply({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('🚔 Caught!').setDescription(`You tried to rob <@${target.id}> but got caught!\n\nNext rob attempt: ${ts(Date.now()+robCd)}`)]});
-      }
-      // Steal between 50-100 coins, or less if they dont have enough
-      const maxSteal = Math.min(victim.coins, 100);
-      const minSteal = Math.min(victim.coins, 50);
-      const stolen = minSteal >= maxSteal ? minSteal : Math.floor(Math.random() * (maxSteal - minSteal + 1)) + minSteal;
-      if (stolen < 1) return reply({embeds:[errEmbed(`<@${target.id}> doesn't have enough coins to steal!`)],flags:MessageFlags.Ephemeral});
-      victim.coins -= stolen;
-      await saveUser(victim);
-      const robber = await getUser(me.id, me.username);
-      robber.coins += stolen;
-      await saveUser(robber);
-      sendLog(client,{title:'🔫 Rob Successful',color:0xF1C40F,fields:[{name:'Robber',value:`<@${me.id}>`,inline:true},{name:'Target',value:`<@${target.id}>`,inline:true},{name:'Stolen',value:`${stolen.toLocaleString()} ${COIN_EMOJI}`,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('💰 Successful Rob!').setDescription(`You stole **${stolen.toLocaleString()}** ${COIN_EMOJI} from <@${target.id}>! (30% of their wallet)\n\nNext rob: ${ts(Date.now()+robCd)}`).addFields({name:'Your Wallet',value:`**${robber.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
-    }
 
 
     if (cmd==='vouch') {
