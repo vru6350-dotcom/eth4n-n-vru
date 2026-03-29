@@ -608,8 +608,8 @@ client.on('messageCreate', async msg => {
     if (!cache.users) { try { await dbRead('users'); } catch {} }
     if (cache.users) {
       if (!cache.users[uid]) cache.users[uid] = { id:uid, username:msg.author.username, coins:0, totalEarned:0, lastDaily:null, inventory:[], redeemedCodes:[] };
-      cache.users[uid].coins       = (cache.users[uid].coins       || 0) + 2;
-      cache.users[uid].totalEarned = (cache.users[uid].totalEarned || 0) + 2;
+      cache.users[uid].coins       = (cache.users[uid].coins       || 0) + 1;
+      cache.users[uid].totalEarned = (cache.users[uid].totalEarned || 0) + 1;
       cache.users[uid].username    = msg.author.username;
       scheduleCoinFlush();
     } else {
