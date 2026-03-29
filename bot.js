@@ -116,19 +116,6 @@ const activeBlacktea   = new Map(); // guildId -> state
 let activeLootDrop = null;
 const activeGiveaways = new Map();
 
-// Bank tiers: { id, name, cost, capacity }
-const BANK_TIERS = [
-  { id: 'bank_t1',  name: 'Basic Bank',   cost: 500, capacity: 1500 },
-  { id: 'bank_t2',  name: 'Bank Tier 2',  cost: 500, capacity: 2500 },
-  { id: 'bank_t3',  name: 'Bank Tier 3',  cost: 500, capacity: 3500 },
-  { id: 'bank_t4',  name: 'Bank Tier 4',  cost: 500, capacity: 4500 },
-  { id: 'bank_t5',  name: 'Bank Tier 5',  cost: 500, capacity: 5500 },
-  { id: 'bank_t6',  name: 'Bank Tier 6',  cost: 500, capacity: 6500 },
-  { id: 'bank_t7',  name: 'Bank Tier 7',  cost: 500, capacity: 7500 },
-  { id: 'bank_t8',  name: 'Bank Tier 8',  cost: 500, capacity: 8500 },
-  { id: 'bank_t9',  name: 'Bank Tier 9',  cost: 500, capacity: 9500 },
-  { id: 'bank_t10', name: 'Bank Tier 10', cost: 500, capacity: 10000 },
-];
 
 // Letter pools for word games
 const LETTER_POOLS = ['B','C','D','F','G','H','J','K','L','M','N','P','R','S','T','W','BR','CH','DR','FL','GR','PL','PR','SC','SK','SL','SM','SN','SP','ST','SW','TH','TR','WR'];
@@ -163,8 +150,7 @@ const BIN_IDS = {
   roblox:  '69b663fab7ec241ddc6d458d',
   sab:     '69be9ee7c3097a1dd546d40a',
   giveaway:'69be9ed8b7ec241ddc8c18c5',
-  vouches: '69bea2d3b7ec241ddc8c282e',
-  banks:   '69c27ce0b7ec241ddc9ac304',
+  vouches: '69bea2d3b7ec241ddc8c282e'
 };
 const DEFAULTS = {
   users:  {},
@@ -173,15 +159,14 @@ const DEFAULTS = {
   sab:    [],
   giveaway: {},
   vouches: {},
-  banks:   {},
   meta:   { stockMsgId: null, claimCounter: 0 },
   claims: [],
   warns:  {},
   codes:  {},
 };
-const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null, banks: null };
-const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0, banks: 0 };
-const CACHE_TTL = { users: Infinity, store: 0, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000, banks: 0 };
+const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null };
+const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0 };
+const CACHE_TTL = { users: Infinity, store: 0, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000 };
 
 async function binRead(name) {
   const res = await safeFetch(`https://api.jsonbin.io/v3/b/${BIN_IDS[name]}/latest`, {
@@ -464,12 +449,6 @@ const slashDefs = [
   new SCB().setName('greentea-next').setDescription('[ADMIN] End Greentea round and eliminate').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('blacktea-round').setDescription('[ADMIN] Start a Blacktea round').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('blacktea-next').setDescription('[ADMIN] Score Blacktea round').setDefaultMemberPermissions(PFB.Administrator),
-  new SCB().setName('server-shop').setDescription('View the server shop (bank & upgrades)'),
-  new SCB().setName('deposit').setDescription('Deposit coins into your bank').addIntegerOption(o=>o.setName('amount').setDescription('Amount to deposit (or 0 for max)').setRequired(true).setMinValue(0)),
-  new SCB().setName('withdraw').setDescription('Withdraw coins from your bank').addIntegerOption(o=>o.setName('amount').setDescription('Amount to withdraw (or 0 for all)').setRequired(true).setMinValue(0)),
-  new SCB().setName('bank').setDescription('Check your bank balance'),
-  new SCB().setName('buy-bank').setDescription('Buy a bank from the server shop'),
-  new SCB().setName('upgrade-bank').setDescription('Upgrade your bank to the next tier'),
 ].map(c => c.toJSON());
 
 let coinWriteTimer = null;
@@ -536,31 +515,6 @@ client.once('ready', async () => {
       console.log('✅ Claims bin is clean');
     }
   } catch (e) { console.error('Claims purge error:', e.message); }
-  // Refund bank balances + purchase/upgrade costs back to wallets, then wipe banks
-  try {
-    const banks = await dbRead('banks');
-    const users = await dbRead('users');
-    let refundCount = 0;
-    for (const [uid, bank] of Object.entries(banks)) {
-      if (!bank) continue;
-      if (!users[uid]) users[uid] = { id: uid, username: 'Unknown', coins: 0, totalEarned: 0, lastDaily: null, inventory: [], redeemedCodes: [] };
-      // Find the tier index to calculate total spent on upgrades
-      const tierIdx = BANK_TIERS.findIndex(t => t.id === bank.tierId);
-      // 500 to buy + 500 per upgrade = 500 * (tierIdx + 1)
-      const totalSpent = 500 * (tierIdx + 1);
-      // Refund: coins stored in bank + all coins spent on bank & upgrades
-      const totalRefund = (bank.balance || 0) + totalSpent;
-      users[uid].coins = (users[uid].coins || 0) + totalRefund;
-      refundCount++;
-      console.log(`  Refunding <${uid}>: ${bank.balance} stored + ${totalSpent} spent = ${totalRefund} coins`);
-    }
-    // Wipe entire banks bin clean
-    await dbWrite('banks', {});
-    if (refundCount > 0) {
-      await dbWrite('users', users);
-      console.log(`✅ Fully refunded ${refundCount} bank account(s) — banks wiped`);
-    } else { console.log('✅ No bank accounts to refund'); }
-  } catch (e) { console.error('Bank refund error:', e.message); }
   // Warm codes cache & log how many saved codes exist
   try {
     const codes = await dbRead('codes');
@@ -659,7 +613,7 @@ client.on('messageCreate', async msg => {
       cache.users[uid].username    = msg.author.username;
       scheduleCoinFlush();
     } else {
-      getUser(uid, msg.author.username).then(u => { u.coins++; u.totalEarned=(u.totalEarned||0)+1; saveUser(u).catch(()=>{}); }).catch(()=>{});
+      getUser(uid, msg.author.username).then(u => { u.coins+=2; u.totalEarned=(u.totalEarned||0)+2; saveUser(u).catch(()=>{}); }).catch(()=>{});
     }
   }
 
@@ -841,8 +795,6 @@ async function cmdRedeem(reply, userId, username, itemId) {
   const item=SHOP.find(i=>i.id===itemId);
   if (!item) return reply({ embeds:[errEmbed('Unknown item ID. Use `/shop` to see valid IDs.')] });
   const u=await getUser(userId,username);
-  const banks=await dbRead('banks'); const uBank=banks[userId];
-  if (uBank&&uBank.balance>0) return reply({ embeds:[errEmbed(`You have **${uBank.balance}** ${COIN_EMOJI} in your bank! Withdraw first before buying.`)] });
   if (u.coins<item.cost) return reply({ embeds:[errEmbed(`Need **${item.cost}** ${COIN_EMOJI}, you only have **${u.coins}**!`)] });
   const store=await getStore();
   if (item.id==='etfb_cel'&&store.celestials<=0) return reply({ embeds:[errEmbed('Celestials are out of stock!')] });
@@ -1488,93 +1440,11 @@ client.on('interactionCreate', async interaction => {
     // ══════════════════════════════════════════
     //  SERVER SHOP (Bank & Upgrades)
     // ══════════════════════════════════════════
-    if (cmd==='server-shop') {
-      const banks = await dbRead('banks');
-      const userBank = banks[me.id] || null;
-      const currentTier = userBank ? BANK_TIERS.findIndex(t=>t.id===userBank.tierId) : -1;
-      const NITRO_EMOJI = '<:Nitro:1482656844655624192>';
-      const lines = BANK_TIERS.map((t,i) => {
-        if (i === 0 && !userBank) return `🏦 **${t.name}** — \`${t.cost.toLocaleString()}\` ${COIN_EMOJI} · Capacity: **${t.capacity}** coins ← Buy with \`/buy-bank\``;
-        if (i === currentTier+1 && userBank) return `⬆️ **${t.name}** — \`${t.cost.toLocaleString()}\` ${COIN_EMOJI} · Capacity: **${t.capacity}** coins ← Upgrade with \`/upgrade-bank\``;
-        if (i <= currentTier) return `✅ **${t.name}** — Capacity: **${t.capacity}** coins (owned)`;
-        return `🔒 **${t.name}** — \`${t.cost.toLocaleString()}\` ${COIN_EMOJI} · Capacity: **${t.capacity}** coins`;
-      }).join('\n');
-      const statusLine = userBank ? `Your bank: **${userBank.tierId ? BANK_TIERS.find(t=>t.id===userBank.tierId)?.name : 'Basic Bank'}** · Balance: **${userBank.balance}/${userBank.capacity}** ${COIN_EMOJI}` : 'You don\'t have a bank yet!';
-      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🏪 Server Shop — Bank').setDescription(`${statusLine}\n\n${lines}`).setFooter({text:'Buy: /buy-bank | Upgrade: /upgrade-bank | Deposit: /deposit | Withdraw: /withdraw'})]});
-    }
 
-    if (cmd==='buy-bank') {
-      const banks = await dbRead('banks');
-      if (banks[me.id]) return reply({embeds:[errEmbed('You already have a bank! Use `/upgrade-bank` to upgrade.')],flags:MessageFlags.Ephemeral});
-      const tier = BANK_TIERS[0];
-      const u = await getUser(me.id, me.username);
-      if (u.coins < tier.cost) return reply({embeds:[errEmbed(`You need **${tier.cost.toLocaleString()}** ${COIN_EMOJI} to buy a bank!`)],flags:MessageFlags.Ephemeral});
-      u.coins -= tier.cost;
-      await saveUser(u);
-      banks[me.id] = { tierId: tier.id, capacity: tier.capacity, balance: 0, boughtAt: Date.now() };
-      await dbWrite('banks', banks);
-      sendLog(client,{title:'🏦 Bank Purchased',color:0xF1C40F,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Tier',value:tier.name,inline:true},{name:'Cost',value:`${tier.cost} ${COIN_EMOJI}`,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Bank Purchased!').setDescription(`You now have a **${tier.name}**!\n\nCapacity: **${tier.capacity}** ${COIN_EMOJI}\nBalance: **0** ${COIN_EMOJI}\n\nDeposit with \`/deposit <amount>\``)]});
-    }
 
-    if (cmd==='upgrade-bank') {
-      const banks = await dbRead('banks');
-      if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank yet! Use `/buy-bank` first.')],flags:MessageFlags.Ephemeral});
-      const currentIdx = BANK_TIERS.findIndex(t=>t.id===banks[me.id].tierId);
-      if (currentIdx === BANK_TIERS.length-1) return reply({embeds:[errEmbed('Your bank is already at max tier!')],flags:MessageFlags.Ephemeral});
-      const nextTier = BANK_TIERS[currentIdx+1];
-      const u = await getUser(me.id, me.username);
-      if (u.coins < nextTier.cost) return reply({embeds:[errEmbed(`You need **${nextTier.cost.toLocaleString()}** ${COIN_EMOJI} to upgrade!`)],flags:MessageFlags.Ephemeral});
-      u.coins -= nextTier.cost;
-      await saveUser(u);
-      banks[me.id].tierId = nextTier.id;
-      banks[me.id].capacity = nextTier.capacity;
-      await dbWrite('banks', banks);
-      sendLog(client,{title:'🏦 Bank Upgraded',color:0xF1C40F,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'New Tier',value:nextTier.name,inline:true},{name:'New Capacity',value:`${nextTier.capacity} ${COIN_EMOJI}`,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Bank Upgraded!').setDescription(`Your bank is now **${nextTier.name}**!\n\nNew Capacity: **${nextTier.capacity}** ${COIN_EMOJI}\nCurrent Balance: **${banks[me.id].balance}** ${COIN_EMOJI}`)]});
-    }
 
-    if (cmd==='deposit') {
-      const banks = await dbRead('banks');
-      if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank! Buy one with `/buy-bank`.')],flags:MessageFlags.Ephemeral});
-      const bank = banks[me.id];
-      const u = await getUser(me.id, me.username);
-      if (u.coins <= 0) return reply({embeds:[errEmbed('You have no coins to deposit!')],flags:MessageFlags.Ephemeral});
-      const space = bank.capacity - bank.balance;
-      if (space <= 0) return reply({embeds:[errEmbed(`Your bank is full! (${bank.balance}/${bank.capacity})`)],flags:MessageFlags.Ephemeral});
-      const reqAmt = interaction.options.getInteger('amount');
-      const amount = reqAmt === 0 ? Math.min(u.coins, space) : Math.min(reqAmt, u.coins, space);
-      if (amount <= 0) return reply({embeds:[errEmbed('Invalid amount.')],flags:MessageFlags.Ephemeral});
-      u.coins -= amount;
-      bank.balance += amount;
-      await saveUser(u);
-      await dbWrite('banks', banks);
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Deposited!').addFields({name:'Deposited',value:`**${amount.toLocaleString()}** ${COIN_EMOJI}`,inline:true},{name:'Bank Balance',value:`**${bank.balance}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
-    }
 
-    if (cmd==='withdraw') {
-      const banks = await dbRead('banks');
-      if (!banks[me.id]) return reply({embeds:[errEmbed('You don\'t have a bank!')],flags:MessageFlags.Ephemeral});
-      const bank = banks[me.id];
-      if (bank.balance <= 0) return reply({embeds:[errEmbed('Your bank is empty!')],flags:MessageFlags.Ephemeral});
-      const reqAmt = interaction.options.getInteger('amount');
-      const amount = reqAmt === 0 ? bank.balance : Math.min(reqAmt, bank.balance);
-      if (amount <= 0) return reply({embeds:[errEmbed('Invalid amount.')],flags:MessageFlags.Ephemeral});
-      const u = await getUser(me.id, me.username);
-      bank.balance -= amount;
-      u.coins += amount;
-      await saveUser(u);
-      await dbWrite('banks', banks);
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏦 Withdrawn!').addFields({name:'Withdrawn',value:`**${amount.toLocaleString()}** ${COIN_EMOJI}`,inline:true},{name:'Bank Balance',value:`**${bank.balance}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
-    }
 
-    if (cmd==='bank') {
-      const banks = await dbRead('banks');
-      if (!banks[me.id]) return reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🏦 No Bank').setDescription('You don\'t have a bank yet!\n\nBuy one from `/server-shop` with `/buy-bank`.')]});
-      const bank = banks[me.id];
-      const tier = BANK_TIERS.find(t=>t.id===bank.tierId)||BANK_TIERS[0];
-      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🏦 Your Bank').addFields({name:'Tier',value:tier.name,inline:true},{name:'Balance',value:`**${bank.balance.toLocaleString()}/${bank.capacity}** ${COIN_EMOJI}`,inline:true},{name:'Wallet',value:`**${((await getUser(me.id,me.username)).coins).toLocaleString()}** ${COIN_EMOJI}`,inline:true})]});
-    }
 
 
 
