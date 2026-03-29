@@ -92,7 +92,7 @@ function isModerator(member) {
 //  HARDCODED PERMANENT CODES (always exist)
 // ══════════════════════════════════════════
 const PERMANENT_CODES = {
-  'RELEASE': { coins: 25, description: '🎉 Launch reward' },
+  'Secret': { coins: 25, description: 'HOW DO YOU KNOW THIS CODE? ITS SUPPOSED TO BE A SECRET!' },
   // LOOTDROP: special 1-claim mystery box, reset by admin each drop
 };
 
