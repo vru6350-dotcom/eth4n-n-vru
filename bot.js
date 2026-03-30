@@ -107,9 +107,8 @@ const activeBlackjack = new Map();
 // ── Game state maps ──
 const activeChairGame  = new Map(); // guildId -> state
 const activeMafia      = new Map(); // guildId -> state
-const activePickNumber = new Map(); // guildId -> state
-const activeGreentea   = new Map(); // guildId -> state
-const activeBlacktea   = new Map(); // guildId -> state
+const activePickNumber = new Map();
+const activeSpinWheel  = new Map(); // guildId -> state
 
 // ── Active Loot Drop state ──
 // { coins, claimedBy: null|userId }
@@ -133,7 +132,8 @@ const SHOP = [
   { id: 'robux_250',  name: '250 Robux',  cost: 1000, category: 'Robux', robuxAmt: 250 },
   { id: 'etfb_cel',   name: 'Celestial',  cost: 100,  category: 'ETFB',  robuxAmt: 0   },
   { id: 'etfb_div',   name: 'Divine',     cost: 250,  category: 'ETFB',  robuxAmt: 0   },
-  { id: 'nitro',      name: 'Nitro Method', cost: 1000, category: 'Nitro', robuxAmt: 0   },
+  { id: 'nitro',      name: 'Nitro Method',  cost: 1000, category: 'Nitro',       robuxAmt: 0 },
+  { id: 'custom_role', name: 'Custom Role',   cost: 800,  category: 'CustomRole',  robuxAmt: 0 },
 ];
 
 // ══════════════════════════════════════════
@@ -336,7 +336,7 @@ const slashDefs = [
     {name:'125 Robux — 500 coins',value:'robux_125'},{name:'150 Robux — 600 coins',value:'robux_150'},
     {name:'175 Robux — 700 coins',value:'robux_175'},{name:'200 Robux — 800 coins',value:'robux_200'},
     {name:'225 Robux — 900 coins',value:'robux_225'},{name:'250 Robux — 1000 coins',value:'robux_250'},
-    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'}
+    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 800 coins',value:'custom_role'}
   )),
   new SCB().setName('inventory').setDescription('View your unclaimed items'),
   new SCB().setName('claim').setDescription('Submit a delivery claim for an item').addStringOption(o=>o.setName('id').setDescription('Claim ID, e.g. C1').setRequired(true)),
@@ -435,20 +435,22 @@ const slashDefs = [
     .addIntegerOption(o=>o.setName('murderers').setDescription('Number of murderers (default 1)').setRequired(false).setMinValue(1)),
   new SCB().setName('pick-number').setDescription('[ADMIN] Start a Pick a Number game (1-50 grid)').setDefaultMemberPermissions(PFB.Administrator)
     .addIntegerOption(o=>o.setName('prize').setDescription('Coins for last survivor').setRequired(true).setMinValue(1)),
-  new SCB().setName('greentea').setDescription('[ADMIN] Start a Greentea word game').setDefaultMemberPermissions(PFB.Administrator)
-    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for winner').setRequired(true).setMinValue(1)),
-  new SCB().setName('blacktea').setDescription('[ADMIN] Start a Blacktea word game (5 rounds)').setDefaultMemberPermissions(PFB.Administrator)
-    .addIntegerOption(o=>o.setName('prize').setDescription('Coins for winner').setRequired(true).setMinValue(1)),
   new SCB().setName('chair-next').setDescription('[ADMIN] Start next Chair Game round').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('mafia-start').setDescription('[ADMIN] Start Mafia after players join').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('mafia-next').setDescription('[ADMIN] Process Mafia round results').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('mafia-kill').setDescription('[MURDERER] Kill a player in Mafia').addUserOption(o=>o.setName('user').setDescription('Player to kill').setRequired(true)),
   new SCB().setName('mafia-vote').setDescription('[INNOCENT] Vote who you think is the murderer').addUserOption(o=>o.setName('user').setDescription('Player to vote out').setRequired(true)),
   new SCB().setName('pick-number-round').setDescription('[ADMIN] Start a Pick a Number round').setDefaultMemberPermissions(PFB.Administrator),
-  new SCB().setName('greentea-round').setDescription('[ADMIN] Start a Greentea round').setDefaultMemberPermissions(PFB.Administrator),
-  new SCB().setName('greentea-next').setDescription('[ADMIN] End Greentea round and eliminate').setDefaultMemberPermissions(PFB.Administrator),
-  new SCB().setName('blacktea-round').setDescription('[ADMIN] Start a Blacktea round').setDefaultMemberPermissions(PFB.Administrator),
-  new SCB().setName('blacktea-next').setDescription('[ADMIN] Score Blacktea round').setDefaultMemberPermissions(PFB.Administrator),
+  new SCB().setName('spin-wheel').setDescription('[ADMIN] Start a Spin the Wheel event').setDefaultMemberPermissions(PFB.Administrator)
+    .addIntegerOption(o=>o.setName('duration').setDescription('Duration in minutes').setRequired(true).setMinValue(1))
+    .addIntegerOption(o=>o.setName('max_entries').setDescription('Max number of people who can enter').setRequired(true).setMinValue(2))
+    .addIntegerOption(o=>o.setName('winners').setDescription('Number of winners').setRequired(true).setMinValue(1))
+    .addIntegerOption(o=>o.setName('prize_coins').setDescription('Coins each winner receives').setRequired(true).setMinValue(1))
+    .addStringOption(o=>o.setName('prize_name').setDescription('Prize description e.g. Nitro Method').setRequired(true)),
+  // ── Testing server only cmds ──
+  new SCB().setName('test-ping').setDescription('[TEST] Ping pong test'),
+  new SCB().setName('test-balance').setDescription('[TEST] Check your balance'),
+  new SCB().setName('test-give').setDescription('[TEST] Give yourself coins for testing').addIntegerOption(o=>o.setName('amount').setDescription('Amount').setRequired(true).setMinValue(1)),
 ].map(c => c.toJSON());
 
 let coinWriteTimer = null;
@@ -554,40 +556,6 @@ client.on('messageCreate', async msg => {
       if (data.alertMsg) {
         try { await data.alertMsg.edit({ embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ Vouch Received!').setDescription(`<@${msg.author.id}> has now vouched for **${data.itemName}** (\`${data.claimId}\`).\n\n> ${msg.content}`)] }); } catch {}
       }
-    }
-  }
-
-  // ── GREENTEA word listener ──
-  const gtGame = activeGreentea.get(msg.guild?.id);
-  if (gtGame && gtGame.phase==='answering' && gtGame.players.has(msg.author.id) && msg.channel.id===gtGame.channelId) {
-    const word = msg.content.trim().toUpperCase();
-    const alreadyAnswered = gtGame.answers.has(msg.author.id);
-    const wordUsed = gtGame.usedWords.has(word);
-    const startsOk = word.startsWith(gtGame.letters);
-    if (startsOk && !wordUsed && !alreadyAnswered) {
-      gtGame.answers.set(msg.author.id, { word, at: Date.now() });
-      gtGame.usedWords.add(word);
-      try { await msg.react('✅'); } catch {}
-    } else {
-      const curChances = (gtGame.chances.get(msg.author.id)||3) - 1;
-      gtGame.chances.set(msg.author.id, curChances);
-      try { await msg.react('❌'); } catch {}
-      if (curChances <= 0) {
-        try { await msg.reply({embeds:[new EmbedBuilder().setColor(0xED4245).setDescription(`<@${msg.author.id}> used all 3 chances and will be eliminated this round!`)]}); } catch {}
-      }
-    }
-  }
-
-  // ── BLACKTEA word listener ──
-  const btGame = activeBlacktea.get(msg.guild?.id);
-  if (btGame && btGame.phase==='answering' && btGame.players.has(msg.author.id) && msg.channel.id===btGame.channelId) {
-    const word = msg.content.trim().toUpperCase();
-    if (!btGame.usedWords.has(word) && word.startsWith(btGame.letters) && !btGame.answers.has(msg.author.id)) {
-      btGame.answers.set(msg.author.id, { word, at: Date.now() });
-      btGame.usedWords.add(word);
-      try { await msg.react('✅'); } catch {}
-    } else {
-      try { await msg.react(btGame.answers.has(msg.author.id) ? '⚠️' : '❌'); } catch {}
     }
   }
 
@@ -765,7 +733,7 @@ async function cmdShop(reply) {
   const etfbLines=SHOP.filter(i=>i.category==='ETFB').map(i=>`${i.id==='etfb_cel'?'✨':'🌟'} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const NITRO_EMOJI='<:Nitro:1482656844655624192>';
   const nitroLines=SHOP.filter(i=>i.category==='Nitro').map(i=>`${NITRO_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
-  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id>'})] });
+  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines,inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id>'})] });
 }
 
 async function cmdInventory(reply, userId, username) {
@@ -924,24 +892,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     // Greentea join
-    if (cid.startsWith('gt_join_')) {
-      const gwId = cid.replace('gt_join_','');
-      const game = [...activeGreentea.values()].find(g=>g.gwId===gwId);
-      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
-      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
-      game.players.add(interaction.user.id);
-      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined Greentea! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
-    }
-
-    // Blacktea join
-    if (cid.startsWith('bt_join_')) {
-      const gwId = cid.replace('bt_join_','');
-      const game = [...activeBlacktea.values()].find(g=>g.gwId===gwId);
-      if (!game) return interaction.reply({embeds:[errEmbed('This lobby has expired.')],flags:MessageFlags.Ephemeral});
-      if (game.phase!=='joining') return interaction.reply({embeds:[errEmbed('Game already started!')],flags:MessageFlags.Ephemeral});
-      game.players.add(interaction.user.id);
-      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You joined Blacktea! **${game.players.size}** player(s) in lobby.`)],flags:MessageFlags.Ephemeral});
-    }
 
     // ── SAB STOCK VIEW ──
     if (cid === 'sab_view') {
@@ -1028,6 +978,53 @@ client.on('interactionCreate', async interaction => {
 
 
 
+  // ── CUSTOM ROLE MODAL ──
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('role_modal_')) {
+    await interaction.deferReply({flags:MessageFlags.Ephemeral});
+    const claimId = interaction.customId.replace('role_modal_','');
+    const roleName  = interaction.fields.getTextInputValue('role_name').trim();
+    const roleColor = interaction.fields.getTextInputValue('role_color').trim();
+
+    // Color name map
+    const COLOR_NAMES = {
+      red:'#FF0000',orange:'#FF7F00',yellow:'#FFFF00',green:'#00FF00',blue:'#0000FF',
+      purple:'#800080',pink:'#FF69B4',cyan:'#00FFFF',white:'#FFFFFF',black:'#000000',
+      grey:'#808080',gray:'#808080',brown:'#A52A2A',gold:'#FFD700',silver:'#C0C0C0',
+      lime:'#00FF00',teal:'#008080',navy:'#000080',magenta:'#FF00FF',violet:'#EE82EE',
+      indigo:'#4B0082',turquoise:'#40E0D0',coral:'#FF7F50',salmon:'#FA8072',
+      maroon:'#800000',olive:'#808000',aqua:'#00FFFF',lavender:'#E6E6FA',
+    };
+    let hexColor = roleColor.startsWith('#') ? roleColor : (COLOR_NAMES[roleColor.toLowerCase()] || null);
+    if (!hexColor || !/^#[0-9A-Fa-f]{6}$/.test(hexColor)) {
+      return interaction.editReply({embeds:[errEmbed(`Invalid colour **${roleColor}**! Use a hex code like \`#FF5733\` or a colour name like \`Red\`, \`Cyan\`, \`Gold\`, etc.`)]});
+    }
+
+    // Inappropriate name check — basic filter
+    const BAD_WORDS = ['nigger','nigga','faggot','retard','nazi','hitler','rape','sex','porn','dick','pussy','fuck','shit','bitch','cunt','whore','slut','ass','kkk'];
+    const nameLower = roleName.toLowerCase().replace(/[^a-z0-9]/g,'');
+    if (BAD_WORDS.some(w => nameLower.includes(w))) {
+      // Kick the user
+      sendLog(client,{title:'🚨 Inappropriate Role Name — User Kicked',color:0xED4245,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Name Attempted',value:roleName,inline:true}]});
+      try {
+        await interaction.user.send({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('👢 Kicked').setDescription(`You were kicked from **${interaction.guild.name}** for submitting an inappropriate role name: **${roleName}**`)]});
+      } catch {}
+      try { await interaction.guild.members.kick(interaction.user.id, 'Inappropriate custom role name'); } catch(e){ console.error('Kick failed:',e.message); }
+      return interaction.editReply({embeds:[errEmbed('Inappropriate name detected. You have been kicked.')]});
+    }
+
+    // Remove item from inventory
+    const u = await getUser(interaction.user.id, interaction.user.username);
+    const idx = (u.inventory||[]).findIndex(i=>i.claimId===claimId);
+    if (idx !== -1) { u.inventory.splice(idx,1); await saveUser(u); }
+
+    // Submit claim with role details
+    const claimsArr = await getClaims();
+    claimsArr.push({claimId,userId:interaction.user.id,username:interaction.user.username,itemId:'custom_role',itemName:'Custom Role',category:'CustomRole',robuxAmt:0,robloxUsername:'N/A',roleDetails:{name:roleName,color:hexColor},claimedAt:Date.now(),status:'pending'});
+    await saveClaims(claimsArr);
+    sendLog(client,{title:'🎨 Custom Role Claim Submitted',color:0xE91E63,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Role Name',value:roleName,inline:true},{name:'Colour',value:hexColor,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true}]});
+    return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🎨 Custom Role Submitted!').setDescription(`Your custom role request has been submitted!\n\n**Name:** ${roleName}\n**Colour:** ${hexColor}\n**Claim ID:** \`${claimId}\`\n\nAn admin will create your role shortly!`)]});
+  }
+
   if (interaction.isModalSubmit()) {
     if (!interaction.customId.startsWith('claim_modal_')) return;
     await interaction.deferReply({flags:MessageFlags.Ephemeral});
@@ -1051,7 +1048,7 @@ client.on('interactionCreate', async interaction => {
     const isTestSrv = isTestServer(interaction.guildId);
     // Test server: block non-testers with an error
     if (isTestSrv && !hasTesterRole(interaction.member) && !interaction.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-      const testerOnly = ['give','take','rain','update-robux','update-etfb','claims','claimed','deny-claim','remove-inv','check-inventory','make-code','drop-code','remove-code','list-codes','gtn','timeout','untimeout','warn','unwarn','warns','kick','ban','lootdrop','check-user','find-user','game-night-start','update-sab','remove-stock-sab','giveaway','chair-game','mafia','pick-number','greentea','blacktea'];
+      const testerOnly = ['give','take','rain','update-robux','update-etfb','claims','claimed','deny-claim','remove-inv','check-inventory','make-code','drop-code','remove-code','list-codes','gtn','timeout','untimeout','warn','unwarn','warns','kick','ban','lootdrop','check-user','find-user','game-night-start','update-sab','remove-stock-sab','giveaway','chair-game','mafia','pick-number'];
       if (!testerOnly.includes(cmd)) {} // non-admin cmds always allowed
     }
 
@@ -1071,6 +1068,16 @@ client.on('interactionCreate', async interaction => {
       const idArg=interaction.options.getString('id').toUpperCase();
       const u=await getUser(me.id,me.username), item=(u.inventory||[]).find(i=>i.claimId===idArg);
       if (!item) return reply({embeds:[errEmbed(`No item \`${idArg}\` in your inventory.`)],flags:MessageFlags.Ephemeral});
+
+      // Custom Role: special modal with name + colour
+      if (item.category==='CustomRole') {
+        const modal = new ModalBuilder().setCustomId(`role_modal_${item.claimId}`).setTitle('🎨 Custom Role Setup');
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('role_name').setLabel('Role Name').setStyle(TextInputStyle.Short).setPlaceholder('e.g. Galaxy King').setRequired(true).setMaxLength(32)),
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('role_color').setLabel('Role Colour (hex #RRGGBB or colour name)').setStyle(TextInputStyle.Short).setPlaceholder('e.g. #FF5733 or Cyan or Red').setRequired(true))
+        );
+        return interaction.showModal(modal);
+      }
 
       // Nitro: no modal needed — auto-submit immediately
       if (item.category==='Nitro') {
@@ -1768,225 +1775,93 @@ client.on('interactionCreate', async interaction => {
     }
 
     // ══════════════════════════════════════════
-    //  GREENTEA (3 chances per person, 3 rounds)
-    // ══════════════════════════════════════════
-    if (cmd==='greentea') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      if (activeGreentea.has(interaction.guildId)) return reply({embeds:[errEmbed('A Greentea game is already running!')],flags:MessageFlags.Ephemeral});
-      const letters = LETTER_POOLS[Math.floor(Math.random()*LETTER_POOLS.length)];
-      const prize   = interaction.options.getInteger('prize');
-      const gwId    = `GT${Date.now()}`;
-      const joinMsg = await interaction.channel.send({
-        embeds:[new EmbedBuilder().setColor(0x2ECC71).setTitle('🍵 Greentea — Join!').setDescription(`Click **Join** to enter Greentea!\n\n📝 Name something starting with **"${letters}"**\nYou get **3 chances** per round.\nIf you can't name one — you're eliminated!`).setFooter({text:`Prize: ${prize.toLocaleString()} coins for winner`})],
-        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`gt_join_${gwId}`).setLabel('🍵 Join').setStyle(ButtonStyle.Primary))]
-      });
-      activeGreentea.set(interaction.guildId, { gwId, letters, prize, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, round: 0, answers: new Map(), chances: new Map(), usedWords: new Set() });
-      sendLog(client,{title:'🍵 Greentea Started',color:0x2ECC71,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Letters',value:letters,inline:true},{name:'Prize',value:`${prize} coins`,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Greentea lobby posted! Use `/greentea-round` to start.')],flags:MessageFlags.Ephemeral});
-    }
-    if (cmd==='greentea-round') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      const game = activeGreentea.get(interaction.guildId);
-      if (!game) return reply({embeds:[errEmbed('No Greentea game running!')],flags:MessageFlags.Ephemeral});
-      if (game.players.size < 2) return reply({embeds:[errEmbed('Need at least 2 players!')],flags:MessageFlags.Ephemeral});
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      game.round++; game.answers = new Map(); game.chances = new Map();
-      game.players.forEach(p => game.chances.set(p, 3));
-      game.phase = 'answering';
-      const ch = await client.channels.fetch(game.channelId);
-      await ch.send({embeds:[new EmbedBuilder().setColor(0x2ECC71).setTitle(`🍵 Greentea — Round ${game.round}`).setDescription(`Name something starting with **"${game.letters}"**!\n\nType your answer in this channel.\nYou have **3 chances** — repeated or invalid words don't count!\n\nPlayers: ${[...game.players].map(p=>`<@${p}>`).join(' ')}`).setFooter({text:'Host: /greentea-next to end round and eliminate those who failed'})]});
-      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} started!`)]});
-    }
-    if (cmd==='greentea-next') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      const game = activeGreentea.get(interaction.guildId);
-      if (!game || game.phase!=='answering') return reply({embeds:[errEmbed('No active Greentea round!')],flags:MessageFlags.Ephemeral});
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      const ch = await client.channels.fetch(game.channelId);
-      // Eliminate players who used all chances without a valid answer
-      const eliminated = new Set();
-      game.players.forEach(p => { if (!game.answers.has(p)) eliminated.add(p); });
-      eliminated.forEach(p => game.players.delete(p));
-      game.phase = 'waiting';
-      if (game.players.size <= 1) {
-        const winner = game.players.size===1?[...game.players][0]:null;
-        activeGreentea.delete(interaction.guildId);
-        if (winner) { const u=await getUser(winner,'unknown'); u.coins+=game.prize; u.totalEarned=(u.totalEarned||0)+game.prize; await saveUser(u); }
-        sendLog(client,{title:'🍵 Greentea Winner',color:0x2ECC71,fields:[{name:'Winner',value:winner?`<@${winner}>`:'No winner',inline:true},{name:'Prize',value:`${game.prize} coins`,inline:true}]});
-        await ch.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🍵 Greentea — Game Over!').setDescription(winner?`🏆 <@${winner}> wins **${game.prize}** ${COIN_EMOJI}!`:'Everyone was eliminated!')]});
-      } else {
-        const elimStr = eliminated.size?[...eliminated].map(p=>`<@${p}>`).join(' '):'Nobody';
-        await ch.send({embeds:[new EmbedBuilder().setColor(0x2ECC71).setTitle(`🍵 Round ${game.round} Results`).setDescription(`**Eliminated:** ${elimStr}\n**Still in:** ${[...game.players].map(p=>`<@${p}>`).join(' ')}\n\nHost: \`/greentea-round\` for next round!`)]});
-      }
-      return interaction.editReply({embeds:[okEmbed('Round ended!')]});
-    }
-
-    // ══════════════════════════════════════════
-    //  BLACKTEA (5 rounds, points system)
-    // ══════════════════════════════════════════
-    if (cmd==='blacktea') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      if (activeBlacktea.has(interaction.guildId)) return reply({embeds:[errEmbed('A Blacktea game is already running!')],flags:MessageFlags.Ephemeral});
-      const letters = LETTER_POOLS[Math.floor(Math.random()*LETTER_POOLS.length)];
-      const prize   = interaction.options.getInteger('prize');
-      const gwId    = `BT${Date.now()}`;
-      const joinMsg = await interaction.channel.send({
-        embeds:[new EmbedBuilder().setColor(0x1A1A2E).setTitle('🖤 Blacktea — Join!').setDescription(`Click **Join** to enter Blacktea!\n\n📝 **Everyone** must name something starting with **"${letters}"**\n🏆 1st = 3pts | 2nd = 2pts | 3rd = 1pt\n5 rounds — most points wins the prize!`).setFooter({text:`Prize: ${prize.toLocaleString()} coins for winner`})],
-        components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`bt_join_${gwId}`).setLabel('🖤 Join').setStyle(ButtonStyle.Primary))]
-      });
-      activeBlacktea.set(interaction.guildId, { gwId, letters, prize, players: new Set(), phase: 'joining', hostId: me.id, channelId: interaction.channelId, round: 0, maxRounds: 5, answers: new Map(), points: new Map(), usedWords: new Set() });
-      sendLog(client,{title:'🖤 Blacktea Started',color:0x1A1A2E,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Letters',value:letters,inline:true},{name:'Prize',value:`${prize} coins`,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription('✅ Blacktea lobby posted! Use `/blacktea-round` to start.')],flags:MessageFlags.Ephemeral});
-    }
-    if (cmd==='blacktea-round') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      const game = activeBlacktea.get(interaction.guildId);
-      if (!game) return reply({embeds:[errEmbed('No Blacktea game running!')],flags:MessageFlags.Ephemeral});
-      if (game.players.size < 2) return reply({embeds:[errEmbed('Need at least 2 players!')],flags:MessageFlags.Ephemeral});
-      if (game.round >= game.maxRounds) return reply({embeds:[errEmbed('All 5 rounds done! Use `/blacktea-end`.')],flags:MessageFlags.Ephemeral});
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      game.round++; game.answers = new Map(); game.phase = 'answering';
-      game.players.forEach(p => { if (!game.points.has(p)) game.points.set(p,0); });
-      const ch = await client.channels.fetch(game.channelId);
-      await ch.send({embeds:[new EmbedBuilder().setColor(0x1A1A2E).setTitle(`🖤 Blacktea — Round ${game.round}/5`).setDescription(`Name something starting with **"${game.letters}"**!\n\nEveryone must answer — type in this channel!\n🥇 1st = 3pts | 🥈 2nd = 2pts | 🥉 3rd = 1pt\n\nPlayers: ${[...game.players].map(p=>`<@${p}>`).join(' ')}`).setFooter({text:'Host: /blacktea-next to score this round'})]});
-      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} started!`)]});
-    }
-    if (cmd==='blacktea-next') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      const game = activeBlacktea.get(interaction.guildId);
-      if (!game || game.phase!=='answering') return reply({embeds:[errEmbed('No active Blacktea round!')],flags:MessageFlags.Ephemeral});
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      const ch = await client.channels.fetch(game.channelId);
-      game.phase = 'waiting';
-      // Award points: order answers were submitted
-      const ordered = [...game.answers.entries()].sort((a,b)=>a[1].at-b[1].at);
-      const pts = [3,2,1];
-      const roundResults = [];
-      ordered.slice(0,3).forEach(([pid,ans],i) => {
-        const cur = game.points.get(pid)||0;
-        game.points.set(pid, cur+pts[i]);
-        roundResults.push(`${['🥇','🥈','🥉'][i]} <@${pid}> — "${ans.word}" (+${pts[i]}pts)`);
-      });
-      // No answer = 0 pts (already handled)
-      const scoreBoard = [...game.points.entries()].sort((a,b)=>b[1]-a[1]).map(([pid,pts],i)=>`**${i+1}.** <@${pid}> — ${pts}pts`).join('\n');
-      if (game.round >= game.maxRounds) {
-        // Final round — end game
-        const winner = [...game.points.entries()].sort((a,b)=>b[1]-a[1])[0];
-        activeBlacktea.delete(interaction.guildId);
-        if (winner) { const u=await getUser(winner[0],'unknown'); u.coins+=game.prize; u.totalEarned=(u.totalEarned||0)+game.prize; await saveUser(u); }
-        sendLog(client,{title:'🖤 Blacktea Winner',color:0x1A1A2E,fields:[{name:'Winner',value:winner?`<@${winner[0]}>`: 'No winner',inline:true},{name:'Prize',value:`${game.prize} coins`,inline:true}]});
-        await ch.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🖤 Blacktea — Game Over!').setDescription(`**Round ${game.round} Results:**\n${roundResults.join('\n')||'Nobody answered!'}\n\n**Final Scoreboard:**\n${scoreBoard}\n\n🏆 ${winner?`<@${winner[0]}> wins **${game.prize}** ${COIN_EMOJI}!`:'No winner!'}`)]});
-      } else {
-        await ch.send({embeds:[new EmbedBuilder().setColor(0x1A1A2E).setTitle(`🖤 Round ${game.round}/5 Results`).setDescription(`**Answers:**\n${roundResults.join('\n')||'Nobody answered!'}\n\n**Scoreboard:**\n${scoreBoard}\n\nHost: \`/blacktea-round\` for round ${game.round+1}!`)]});
-      }
-      return interaction.editReply({embeds:[okEmbed(`Round ${game.round} scored!`)]});
-    }
-
-
-    if (cmd==='redeem-sab') {
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      const itemName = interaction.options.getString('item').trim().toLowerCase();
-      const sab = await dbRead('sab');
-      const arr = Array.isArray(sab) ? sab.filter(i => i && i.item) : [];
-      const idx = arr.findIndex(i => i.item.toLowerCase() === itemName);
-      if (idx === -1) return interaction.editReply({embeds:[errEmbed(`**${interaction.options.getString('item')}** not found in SAB stock. Use the 🛒 button on the stock embed to see available items.`)]});
-      const sabItem = arr[idx];
-      const u = await getUser(me.id, me.username);
-      if (u.coins < sabItem.price) return interaction.editReply({embeds:[errEmbed(`You need **${sabItem.price.toLocaleString()}** ${COIN_EMOJI} but only have **${u.coins.toLocaleString()}** ${COIN_EMOJI}!`)]});
-      // Deduct coins
-      u.coins = Math.max(0, u.coins - sabItem.price);
-      await saveUser(u);
-      // If single stock, remove from SAB after purchase
-      if (sabItem.stock === 'S') {
-        arr.splice(idx, 1);
-        await dbWrite('sab', arr);
-      }
-      sendLog(client,{title:'🛍️ SAB Item Purchased',color:0x9B59B6,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Item',value:sabItem.item,inline:true},{name:'Price',value:`${sabItem.price.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Stock Type',value:sabItem.stock==='S'?'Single (removed from stock)':'Multiple',inline:true},{name:'Balance',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true}]});
-      // Alert admins
-      try {
-        const alertCh = await client.channels.fetch(ALERT_CHANNEL_ID);
-        if (alertCh) await alertCh.send({embeds:[new EmbedBuilder().setColor(0x9B59B6).setTitle('🛍️ SAB Purchase').setDescription(`<@${me.id}> purchased **${sabItem.item}** for **${sabItem.price.toLocaleString()}** ${COIN_EMOJI}.\n\nPlease deliver their item!`)]});
-      } catch {}
-      return interaction.editReply({embeds:[new EmbedBuilder()
-        .setColor(0x57F287)
-        .setTitle('🛍️ SAB Purchase Successful!')
-        .setDescription(`You bought **${sabItem.item}** for **${sabItem.price.toLocaleString()}** ${COIN_EMOJI}!\n\nBalance: **${u.coins.toLocaleString()}** ${COIN_EMOJI}\n\nAn admin will deliver your item shortly! Check <#${ALERT_CHANNEL_ID}> for updates.`)
-        .setFooter({text:sabItem.stock==='S'?'This was the last one — now out of stock!':'More stock available'})]});
-    }
-
-
-    if (cmd==='remove-stock-sab') {
-      const item = interaction.options.getString('item').trim();
-      const sab  = await dbRead('sab');
-      const arr  = Array.isArray(sab) ? sab.filter(i => i && i.item) : [];
-      const idx  = arr.findIndex(i => i.item.toLowerCase() === item.toLowerCase());
-      if (idx === -1) return reply({embeds:[errEmbed(`**${item}** not found in SAB stock.`)]});
-      arr.splice(idx, 1);
-      await dbWrite('sab', arr);
-      sendLog(client,{title:'🛍️ SAB Item Removed',color:0xED4245,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Item',value:item,inline:true}]});
-      return reply({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('🗑️ SAB Item Removed').setDescription(`**${item}** removed from SAB stock.`)]});
-    }
-
-    if (cmd==='giveaway') {
-      const durationMins = interaction.options.getInteger('duration');
-      const prize        = interaction.options.getString('prize');
-      const numWinners   = interaction.options.getInteger('winners') || 1;
-      const coins        = interaction.options.getInteger('coins');
-      const endsAt       = Date.now() + durationMins * 60 * 1000;
-      const gwId         = `GW${Date.now()}`;
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
-      let gwMsg = null;
-      try {
-        gwMsg = await interaction.channel.send({
-          embeds:[new EmbedBuilder()
-            .setColor(0xF1C40F)
-            .setTitle('🎉 GIVEAWAY!')
-            .setDescription(`**Prize:** ${prize}\n**Coins:** ${coins.toLocaleString()} ${COIN_EMOJI} per winner\n**Winners:** ${numWinners}\n**Host:** <@${me.id}>\n\nReact with 🎉 to enter!\n\n⏰ Ends ${ts(endsAt)} (${ts(endsAt,'T')} your time)`)
-            .setFooter({text:`ID: ${gwId}`})
-            .setTimestamp(endsAt)]
-        });
-        await gwMsg.react('🎉');
-      } catch(e){ console.error('Giveaway send error:',e.message); }
-      if (!gwMsg) return interaction.editReply({embeds:[errEmbed('Failed to post giveaway!')]});
-      const gwData = { channelId: interaction.channelId, messageId: gwMsg.id, prize, coins, numWinners, hostId: me.id, endsAt, gwId };
-      activeGiveaways.set(gwId, gwData);
-      const gwTimeout = setTimeout(async () => {
-        try {
-          const gwState = activeGiveaways.get(gwId);
-          if (!gwState) return;
-          activeGiveaways.delete(gwId);
-          const ch  = await client.channels.fetch(gwState.channelId);
-          const msg = await ch.messages.fetch(gwState.messageId);
-          const reaction = msg.reactions.cache.get('🎉');
-          let entrants = [];
-          if (reaction) { const users = await reaction.users.fetch(); entrants = [...users.values()].filter(u => !u.bot); }
-          if (!entrants.length) {
-            await msg.edit({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('🎉 Giveaway Ended').setDescription(`No one entered!\n\n**Prize:** ${gwState.prize}`)]});
-            return;
-          }
-          const shuffled = entrants.sort(() => Math.random() - 0.5);
-          const winners  = shuffled.slice(0, Math.min(gwState.numWinners, entrants.length));
-          for (const w of winners) {
-            const u = await getUser(w.id, w.username);
-            u.coins += gwState.coins; u.totalEarned = (u.totalEarned||0) + gwState.coins;
-            await saveUser(u);
-            try { await w.send({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🎉 You Won a Giveaway!').setDescription(`You won **${gwState.prize}** and received **${gwState.coins.toLocaleString()}** ${COIN_EMOJI}!`)]}); } catch {}
-          }
-          const winMentions = winners.map(w => `<@${w.id}>`).join(' ');
-          await msg.edit({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🎉 Giveaway Ended!').setDescription(`**Prize:** ${gwState.prize}\n**Coins:** ${gwState.coins.toLocaleString()} ${COIN_EMOJI} each\n\n🏆 **Winners:** ${winMentions}\n\nHosted by <@${gwState.hostId}>`).setTimestamp()]});
-          await msg.reply({content:`🎉 Congratulations ${winMentions}! You won **${gwState.prize}**!`});
-          sendLog(client,{title:'🎉 Giveaway Ended',color:0xF1C40F,fields:[{name:'Prize',value:gwState.prize,inline:true},{name:'Winners',value:winMentions,inline:true},{name:'Coins Each',value:`${gwState.coins.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Entrants',value:`${entrants.length}`,inline:true}]});
-        } catch(e){ console.error('Giveaway end error:',e.message); }
-      }, durationMins * 60 * 1000);
-      gwData.timeout = gwTimeout;
-      sendLog(client,{title:'🎉 Giveaway Started',color:0xF1C40F,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Prize',value:prize,inline:true},{name:'Coins Each',value:`${coins.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Winners',value:`${numWinners}`,inline:true},{name:'Duration',value:`${durationMins} min`,inline:true}]});
-      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ Giveaway Started!').setDescription(`Giveaway posted! Ends ${ts(endsAt)} (${ts(endsAt,'T')} your time)`)]});
-    }
-
-
-    // ══════════════════════════════════════════
     //  LOOT DROP
     // ══════════════════════════════════════════
+
+    // ══════════════════════════════════════════
+    //  CUSTOM ROLE CLAIM (via modal)
+    // ══════════════════════════════════════════
+    // Custom role claim is handled in the modal submit section
+
+    // ══════════════════════════════════════════
+    //  SPIN THE WHEEL
+    // ══════════════════════════════════════════
+    if (cmd==='spin-wheel') {
+      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
+      if (activeSpinWheel.has(interaction.guildId)) return reply({embeds:[errEmbed('A Spin the Wheel is already running!')],flags:MessageFlags.Ephemeral});
+      const duration   = interaction.options.getInteger('duration');
+      const maxEntries = interaction.options.getInteger('max_entries');
+      const numWinners = interaction.options.getInteger('winners');
+      const prizeCoins = interaction.options.getInteger('prize_coins');
+      const prizeName  = interaction.options.getString('prize_name');
+      const endsAt     = Date.now() + duration * 60 * 1000;
+      const swId       = `SW${Date.now()}`;
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const swMsg = await interaction.channel.send({
+        embeds:[new EmbedBuilder().setColor(0xE91E63).setTitle('🎡 Spin the Wheel!')
+          .setDescription(`Click **Enter** to join the wheel!\n\n🏆 **Prize:** ${prizeName}\n💰 **Coins:** ${prizeCoins.toLocaleString()} ${COIN_EMOJI} per winner\n👑 **Winners:** ${numWinners}\n👥 **Max entries:** ${maxEntries}\n\n⏰ Ends ${ts(endsAt)} (${ts(endsAt,'T')} your time)`)
+          .setFooter({text:`0/${maxEntries} entered`}).setTimestamp(endsAt)],
+        components:[new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`sw_enter_${swId}`).setLabel('🎡 Enter').setStyle(ButtonStyle.Primary)
+        )]
+      });
+      const swState = { swId, prize: prizeName, prizeCoins, numWinners, maxEntries, hostId: me.id, endsAt, channelId: interaction.channelId, msgId: swMsg.id, entries: new Set() };
+      activeSpinWheel.set(interaction.guildId, swState);
+      const swTimeout = setTimeout(async () => {
+        try {
+          const state = activeSpinWheel.get(interaction.guildId);
+          if (!state) return;
+          activeSpinWheel.delete(interaction.guildId);
+          const ch = await client.channels.fetch(state.channelId);
+          const msg = await ch.messages.fetch(state.msgId);
+          const entrants = [...state.entries];
+          if (!entrants.length) {
+            await msg.edit({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('🎡 Spin the Wheel — Ended').setDescription('Nobody entered!')],components:[]});
+            return;
+          }
+          // Spin — pick random winners
+          const shuffled = entrants.sort(()=>Math.random()-0.5);
+          const winners  = shuffled.slice(0, Math.min(state.numWinners, entrants.length));
+          for (const w of winners) {
+            const u = await getUser(w,'unknown'); u.coins+=state.prizeCoins; u.totalEarned=(u.totalEarned||0)+state.prizeCoins; await saveUser(u);
+            try { const usr=await client.users.fetch(w); await usr.send({embeds:[new EmbedBuilder().setColor(0xE91E63).setTitle('🎡 You Won!').setDescription(`You won the Spin the Wheel!\n\n**Prize:** ${state.prize}\n**Coins:** +${state.prizeCoins.toLocaleString()} ${COIN_EMOJI}`)]}); } catch {}
+          }
+          const winMentions = winners.map(w=>`<@${w}>`).join(' ');
+          await msg.edit({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🎡 Spin the Wheel — Results!').setDescription(`The wheel has been spun!\n\n🏆 **Winners:** ${winMentions}\n💰 **Prize:** ${state.prize} + ${state.prizeCoins.toLocaleString()} ${COIN_EMOJI} each\n\n👥 ${entrants.length} people entered`).setTimestamp()],components:[]});
+          await msg.reply({content:`🎡 Congratulations ${winMentions}! You won **${state.prize}**!`});
+          sendLog(client,{title:'🎡 Spin the Wheel Ended',color:0xE91E63,fields:[{name:'Winners',value:winMentions,inline:false},{name:'Prize',value:state.prize,inline:true},{name:'Coins Each',value:`${state.prizeCoins.toLocaleString()} ${COIN_EMOJI}`,inline:true},{name:'Entries',value:`${entrants.length}`,inline:true}]});
+        } catch(e){ console.error('Spin wheel end error:',e.message); }
+      }, duration * 60 * 1000);
+      swState.timeout = swTimeout;
+      sendLog(client,{title:'🎡 Spin the Wheel Started',color:0xE91E63,fields:[{name:'Host',value:`<@${me.id}>`,inline:true},{name:'Prize',value:prizeName,inline:true},{name:'Winners',value:`${numWinners}`,inline:true},{name:'Max',value:`${maxEntries}`,inline:true},{name:'Duration',value:`${duration} min`,inline:true}]});
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ Spin the Wheel posted! Ends ${ts(endsAt)}`)]});
+    }
+
+    // ══════════════════════════════════════════
+    //  TESTING SERVER COMMANDS
+    // ══════════════════════════════════════════
+    if (cmd==='test-ping') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This command is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🏓 Pong!').setDescription(`Bot is online! Latency: **${client.ws.ping}ms**`)]});
+    }
+    if (cmd==='test-balance') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This command is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
+      const u = await getUser(me.id, me.username);
+      return reply({embeds:[new EmbedBuilder().setColor(0xF1C40F).setTitle('🧪 Test Balance').setDescription(`**${me.username}:** ${u.coins.toLocaleString()} ${COIN_EMOJI}`)]});
+    }
+    if (cmd==='test-give') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This command is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
+      const amt = interaction.options.getInteger('amount');
+      const u = await getUser(me.id, me.username);
+      u.coins += amt; u.totalEarned=(u.totalEarned||0)+amt;
+      await saveUser(u);
+      return reply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🧪 Test Give').setDescription(`+**${amt}** ${COIN_EMOJI} given to yourself!\nBalance: **${u.coins.toLocaleString()}** ${COIN_EMOJI}`)]});
+    }
+
+
     if (cmd==='lootdrop') {
       if (activeLootDrop) return reply({embeds:[errEmbed('A Loot Drop is already active! Someone needs to claim it first.')],flags:MessageFlags.Ephemeral});
       const coins = Math.floor(Math.random()*41)+10; // 10-50, secret until claimed
