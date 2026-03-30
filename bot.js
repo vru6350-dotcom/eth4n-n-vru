@@ -253,7 +253,7 @@ async function getUser(userId, username) {
   if (!users[userId].inventory)     users[userId].inventory     = [];
   return users[userId];
 }
-async function saveUser(u) { const users = await dbRead('users'); users[u.id] = u; await dbWrite('users', users); }
+async function saveUser(u) { if (u.coins < 0) u.coins = Math.abs(u.coins); const users = await dbRead('users'); users[u.id] = u; await dbWrite('users', users); }
 async function getLeaderboard(n) { const users = await dbRead('users'); return Object.values(users).sort((a,b)=>b.coins-a.coins).slice(0,n); }
 async function getStore()    { return dbRead('store'); }
 async function saveStore(s)  { await dbWrite('store', s); cacheTime.store = 0; }
@@ -515,6 +515,19 @@ client.once('ready', async () => {
       console.log('✅ Claims bin is clean');
     }
   } catch (e) { console.error('Claims purge error:', e.message); }
+  // Fix any negative coin balances
+  try {
+    const allUsers = await dbRead('users');
+    let fixed = 0;
+    for (const uid of Object.keys(allUsers)) {
+      if (allUsers[uid] && allUsers[uid].coins < 0) {
+        allUsers[uid].coins = Math.abs(allUsers[uid].coins);
+        fixed++;
+      }
+    }
+    if (fixed > 0) { await dbWrite('users', allUsers); console.log(`✅ Fixed ${fixed} negative coin balance(s)`); }
+    else console.log('✅ No negative balances found');
+  } catch(e) { console.error('Balance fix error:', e.message); }
   // Warm codes cache & log how many saved codes exist
   try {
     const codes = await dbRead('codes');
@@ -808,7 +821,7 @@ async function cmdRedeem(reply, userId, username, itemId) {
   else                           store.robux=Math.max(0,store.robux-item.robuxAmt);
   await saveStore(store); await updateStockEmbed(client);
   const claimId=await nextClaimId();
-  u.coins-=item.cost;
+  u.coins=Math.max(0,u.coins-item.cost);
   u.inventory.push({claimId,itemId:item.id,name:item.name,category:item.category,robuxAmt:item.robuxAmt,cost:item.cost});
   await saveUser(u);
   sendLog(client,{title:'🛒 Item Redeemed',color:0x9B59B6,fields:[{name:'User',value:`<@${userId}>`,inline:true},{name:'Item',value:item.name,inline:true},{name:'Cost',value:`**${item.cost}** ${COIN_EMOJI}`,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true},{name:'Balance',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true}]});
@@ -1881,7 +1894,7 @@ client.on('interactionCreate', async interaction => {
       const u = await getUser(me.id, me.username);
       if (u.coins < sabItem.price) return interaction.editReply({embeds:[errEmbed(`You need **${sabItem.price.toLocaleString()}** ${COIN_EMOJI} but only have **${u.coins.toLocaleString()}** ${COIN_EMOJI}!`)]});
       // Deduct coins
-      u.coins -= sabItem.price;
+      u.coins = Math.max(0, u.coins - sabItem.price);
       await saveUser(u);
       // If single stock, remove from SAB after purchase
       if (sabItem.stock === 'S') {
