@@ -470,6 +470,7 @@ const slashDefs = [
   new SCB().setName('test-balance').setDescription('[TEST] Check your balance'),
   new SCB().setName('test-give').setDescription('[TEST] Give yourself coins for testing').addIntegerOption(o=>o.setName('amount').setDescription('Amount').setRequired(true).setMinValue(1)),
   new SCB().setName('test-shop').setDescription('[TEST] View the testing server shop'),
+  new SCB().setName('test-inv').setDescription('[TEST] View your test server inventory'),
   new SCB().setName('test-redeem').setDescription('[TEST] Buy a testing shop item').addStringOption(o=>o.setName('item').setDescription('Item ID').setRequired(true).addChoices(
     {name:'Custom Role — 100 coins',value:'test_role'},
     {name:'PS99 200M Gems — 100 coins',value:'ps99_200m'},
@@ -1064,8 +1065,29 @@ client.on('interactionCreate', async interaction => {
     const idx = (u.inventory||[]).findIndex(i=>i.claimId===claimId);
     if (idx !== -1) { u.inventory.splice(idx,1); await saveUser(u); }
 
-    // Submit claim with role details
-    const claimsArr = await getClaims();
+    // Create the role immediately
+    try {
+      const hexInt = parseInt(hexColor.replace('#',''), 16);
+      const newRole = await interaction.guild.roles.create({
+        name: roleName,
+        color: hexInt,
+        permissions: [],
+        reason: `Custom role for ${interaction.user.username}`
+      });
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      await member.roles.add(newRole);
+      sendLog(client,{title:'🎨 Custom Role Created',color:0xE91E63,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Role',value:`${roleName}`,inline:true},{name:'Colour',value:hexColor,inline:true}]});
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(hexInt).setTitle('🎨 Custom Role Created!').setDescription(`Your custom role has been created and given to you!\n\n**Role:** ${roleName}\n**Colour:** ${hexColor}\n\nYou can see it in your roles now! 🎉`)]});
+    } catch(e) {
+      console.error('Role create error:', e.message);
+      // Fallback to claim if bot lacks permission
+      const claimsArr = await getClaims();
+      claimsArr.push({claimId,userId:interaction.user.id,username:interaction.user.username,itemId:'custom_role',itemName:'Custom Role',category:'CustomRole',robuxAmt:0,robloxUsername:'N/A',roleDetails:{name:roleName,color:hexColor},claimedAt:Date.now(),status:'pending'});
+      await saveClaims(claimsArr);
+      sendLog(client,{title:'🎨 Custom Role Claim (manual)',color:0xFEE75C,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Role Name',value:roleName,inline:true},{name:'Colour',value:hexColor,inline:true},{name:'Error',value:e.message,inline:false}]});
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🎨 Custom Role Queued').setDescription(`Could not create automatically — submitted as claim \`${claimId}\`\nAn admin will create your role shortly!\n\n**Name:** ${roleName}\n**Colour:** ${hexColor}`)]});
+    }
+    const claimsArr_UNUSED = await getClaims();
     claimsArr.push({claimId,userId:interaction.user.id,username:interaction.user.username,itemId:'custom_role',itemName:'Custom Role',category:'CustomRole',robuxAmt:0,robloxUsername:'N/A',roleDetails:{name:roleName,color:hexColor},claimedAt:Date.now(),status:'pending'});
     await saveClaims(claimsArr);
     sendLog(client,{title:'🎨 Custom Role Claim Submitted',color:0xE91E63,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Role Name',value:roleName,inline:true},{name:'Colour',value:hexColor,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true}]});
@@ -1117,7 +1139,7 @@ client.on('interactionCreate', async interaction => {
       if (!item) return reply({embeds:[errEmbed(`No item \`${idArg}\` in your inventory.`)],flags:MessageFlags.Ephemeral});
 
       // Custom Role: special modal with name + colour
-      if (item.category==='CustomRole') {
+      if (item.category==='CustomRole' || item.category==='TestCustomRole') {
         const modal = new ModalBuilder().setCustomId(`role_modal_${item.claimId}`).setTitle('🎨 Custom Role Setup');
         modal.addComponents(
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('role_name').setLabel('Role Name').setStyle(TextInputStyle.Short).setPlaceholder('e.g. Galaxy King').setRequired(true).setMaxLength(32)),
@@ -1887,6 +1909,20 @@ client.on('interactionCreate', async interaction => {
     // ══════════════════════════════════════════
     //  TESTING SERVER COMMANDS
     // ══════════════════════════════════════════
+
+
+    if (cmd==='test-inv') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
+      const u = await getUser(me.id, me.username);
+      const inv = (u.inventory||[]);
+      if (!inv.length) return reply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🎒 Test Inventory').setDescription('Your inventory is empty! Use `/test-redeem` to buy items.')],flags:MessageFlags.Ephemeral});
+      const lines = inv.map(i => {
+        const e = i.category==='PS99'?'💎':i.category==='SailorPiece'?'⚔️':i.category==='TestCustomRole'?'🎨':'📦';
+        return `${e} **${i.name}** — \`${i.claimId}\` · \`/claim ${i.claimId}\``;
+      }).join('\n');
+      return reply({embeds:[new EmbedBuilder().setColor(0xE91E63).setTitle('🎒 Test Inventory').setDescription(lines).setFooter({text:`${inv.length} item(s)`})],flags:MessageFlags.Ephemeral});
+    }
 
     if (cmd==='test-shop') {
       if (!isTestSrv) return reply({embeds:[errEmbed('This is only available in the test server!')],flags:MessageFlags.Ephemeral});
