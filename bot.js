@@ -58,7 +58,7 @@ const GTN_CHANNEL_ID   = '1482076857321914378';
 const DROP_CHANNEL_ID  = '1481582652430483579';
 const LOG_CHANNEL_ID   = '1482112291750150214';
 const TEST_GUILD_ID    = '1485636323854389360';
-const TESTER_ROLE_NAME = 'Tester';
+const TESTER_ROLE_NAME = 'Testers';
 
 function isTestServer(guildId) { return guildId === TEST_GUILD_ID; }
 function hasTesterRole(member) {
