@@ -134,6 +134,24 @@ const SHOP = [
   { id: 'etfb_div',   name: 'Divine',     cost: 250,  category: 'ETFB',  robuxAmt: 0   },
   { id: 'nitro',      name: 'Nitro Method',  cost: 1000, category: 'Nitro',       robuxAmt: 0 },
   { id: 'custom_role', name: 'Custom Role',   cost: 800,  category: 'CustomRole',  robuxAmt: 0 },
+  // ── TESTING SERVER SHOP ──
+  { id: 'test_role',         name: 'Custom Role',         cost: 100, category: 'TestCustomRole', robuxAmt: 0 },
+  // PS99
+  { id: 'ps99_200m',         name: '200M Gems',           cost: 100, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_400m',         name: '400M Gems',           cost: 200, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_600m',         name: '600M Gems',           cost: 300, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_800m',         name: '800M Gems',           cost: 400, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_1b',           name: '1B Gems',             cost: 500, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_2b',           name: '2B Gems',             cost: 600, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_4b',           name: '4B Gems',             cost: 700, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_6b',           name: '6B Gems',             cost: 800, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_8b',           name: '8B Gems',             cost: 900, category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_10b',          name: '10B Gems',            cost: 1000,category: 'PS99',           robuxAmt: 0 },
+  // Sailor Piece
+  { id: 'sp_sukuna_v1',      name: 'Sukuna v1 Set',       cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
+  { id: 'sp_gojo_v1',        name: 'Gojo v1 Set',         cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
+  { id: 'sp_race_100',       name: '100 Race Rerolls',    cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
+  { id: 'sp_trait_100',      name: '100 Trait Rerolls',   cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
 ];
 
 // ══════════════════════════════════════════
@@ -451,6 +469,34 @@ const slashDefs = [
   new SCB().setName('test-ping').setDescription('[TEST] Ping pong test'),
   new SCB().setName('test-balance').setDescription('[TEST] Check your balance'),
   new SCB().setName('test-give').setDescription('[TEST] Give yourself coins for testing').addIntegerOption(o=>o.setName('amount').setDescription('Amount').setRequired(true).setMinValue(1)),
+  new SCB().setName('test-shop').setDescription('[TEST] View the testing server shop'),
+  new SCB().setName('test-redeem').setDescription('[TEST] Buy a testing shop item').addStringOption(o=>o.setName('item').setDescription('Item ID').setRequired(true).addChoices(
+    {name:'Custom Role — 100 coins',value:'test_role'},
+    {name:'PS99 200M Gems — 100 coins',value:'ps99_200m'},
+    {name:'PS99 400M Gems — 200 coins',value:'ps99_400m'},
+    {name:'PS99 600M Gems — 300 coins',value:'ps99_600m'},
+    {name:'PS99 800M Gems — 400 coins',value:'ps99_800m'},
+    {name:'PS99 1B Gems — 500 coins',value:'ps99_1b'},
+    {name:'PS99 2B Gems — 600 coins',value:'ps99_2b'},
+    {name:'PS99 4B Gems — 700 coins',value:'ps99_4b'},
+    {name:'PS99 6B Gems — 800 coins',value:'ps99_6b'},
+    {name:'PS99 8B Gems — 900 coins',value:'ps99_8b'},
+    {name:'PS99 10B Gems — 1000 coins',value:'ps99_10b'},
+    {name:'SP Sukuna v1 Set — 100 coins',value:'sp_sukuna_v1'},
+    {name:'SP Gojo v1 Set — 100 coins',value:'sp_gojo_v1'},
+    {name:'SP 100 Race Rerolls — 100 coins',value:'sp_race_100'},
+    {name:'SP 100 Trait Rerolls — 100 coins',value:'sp_trait_100'}
+  )),
+  new SCB().setName('find-claim').setDescription('[ADMIN] Find pending claims by category').setDefaultMemberPermissions(PFB.Administrator)
+    .addStringOption(o=>o.setName('category').setDescription('Category to filter').setRequired(true).addChoices(
+      {name:'Robux',value:'Robux'},
+      {name:'PS99',value:'PS99'},
+      {name:'Nitro Method',value:'Nitro'},
+      {name:'ETFB',value:'ETFB'},
+      {name:'Sailor Piece',value:'SailorPiece'},
+      {name:'Custom Role',value:'CustomRole'},
+      {name:'All Pending',value:'all'}
+    )),
 ].map(c => c.toJSON());
 
 let coinWriteTimer = null;
@@ -1787,8 +1833,9 @@ client.on('interactionCreate', async interaction => {
     //  SPIN THE WHEEL
     // ══════════════════════════════════════════
     if (cmd==='spin-wheel') {
-      if (!canRunAdmin(interaction)) return reply({embeds:[errEmbed('No permission!')],flags:MessageFlags.Ephemeral});
-      if (activeSpinWheel.has(interaction.guildId)) return reply({embeds:[errEmbed('A Spin the Wheel is already running!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      if (!canRunAdmin(interaction)) return interaction.editReply({embeds:[errEmbed('No permission!')]});
+      if (activeSpinWheel.has(interaction.guildId)) return interaction.editReply({embeds:[errEmbed('A Spin the Wheel is already running!')]});
       const duration   = interaction.options.getInteger('duration');
       const maxEntries = interaction.options.getInteger('max_entries');
       const numWinners = interaction.options.getInteger('winners');
@@ -1796,7 +1843,6 @@ client.on('interactionCreate', async interaction => {
       const prizeName  = interaction.options.getString('prize_name');
       const endsAt     = Date.now() + duration * 60 * 1000;
       const swId       = `SW${Date.now()}`;
-      await interaction.deferReply({flags:MessageFlags.Ephemeral});
       const swMsg = await interaction.channel.send({
         embeds:[new EmbedBuilder().setColor(0xE91E63).setTitle('🎡 Spin the Wheel!')
           .setDescription(`Click **Enter** to join the wheel!\n\n🏆 **Prize:** ${prizeName}\n💰 **Coins:** ${prizeCoins.toLocaleString()} ${COIN_EMOJI} per winner\n👑 **Winners:** ${numWinners}\n👥 **Max entries:** ${maxEntries}\n\n⏰ Ends ${ts(endsAt)} (${ts(endsAt,'T')} your time)`)
@@ -1840,6 +1886,58 @@ client.on('interactionCreate', async interaction => {
     // ══════════════════════════════════════════
     //  TESTING SERVER COMMANDS
     // ══════════════════════════════════════════
+
+    if (cmd==='test-shop') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
+      const roleLines   = `🎨 **Custom Role** — \`100\` ${COIN_EMOJI} · \`test_role\``;
+      const ps99Items   = SHOP.filter(i=>i.category==='PS99');
+      const spItems     = SHOP.filter(i=>i.category==='SailorPiece');
+      const ps99Lines   = ps99Items.map(i=>`💎 **${i.name}** — \`${i.cost}\` ${COIN_EMOJI} · \`${i.id}\``).join('\n');
+      const spLines     = spItems.map(i=>`⚔️ **${i.name}** — \`${i.cost}\` ${COIN_EMOJI} · \`${i.id}\``).join('\n');
+      return reply({embeds:[new EmbedBuilder().setColor(0xE91E63).setTitle('🧪 Testing Server Shop').addFields(
+        {name:'🎨 Custom Role',value:roleLines,inline:false},
+        {name:'💎 Pet Simulator 99',value:ps99Lines,inline:false},
+        {name:'⚔️ Sailor Piece',value:spLines,inline:false}
+      ).setFooter({text:'Buy: /test-redeem <item>'})]});
+    }
+
+    if (cmd==='test-redeem') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
+      const itemId = interaction.options.getString('item');
+      const item   = SHOP.find(i=>i.id===itemId);
+      if (!item) return reply({embeds:[errEmbed('Item not found!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const u = await getUser(me.id, me.username);
+      if (u.coins < item.cost) return interaction.editReply({embeds:[errEmbed(`You need **${item.cost}** ${COIN_EMOJI} but only have **${u.coins.toLocaleString()}**!`)]});
+      const claimId = await nextClaimId();
+      u.coins = Math.max(0, u.coins - item.cost);
+      u.inventory.push({claimId, itemId: item.id, name: item.name, category: item.category, robuxAmt: 0, cost: item.cost});
+      await saveUser(u);
+      // If custom role — show modal via claim
+      sendLog(client,{title:'🧪 Test Item Redeemed',color:0xE91E63,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Item',value:item.name,inline:true},{name:'Category',value:item.category,inline:true},{name:'Cost',value:`${item.cost} ${COIN_EMOJI}`,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true}]});
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🧪 Item Added to Inventory!').setDescription(`**${item.name}** added!\n\nBalance: **${u.coins.toLocaleString()}** ${COIN_EMOJI}\nClaim ID: \`${claimId}\`\n\nUse \`/claim ${claimId}\` to submit!`)]});
+    }
+
+    if (cmd==='find-claim') {
+      if (!isTestSrv) return reply({embeds:[errEmbed('This is only available in the test server!')],flags:MessageFlags.Ephemeral});
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const category = interaction.options.getString('category');
+      const allClaims = await getClaims();
+      const arr = Array.isArray(allClaims) ? allClaims : [];
+      const filtered = category === 'all' ? arr : arr.filter(c => c.category === category);
+      if (!filtered.length) return interaction.editReply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setDescription(`No pending claims found for **${category}**.`)]});
+      const catEmoji = {Robux:'💎',PS99:'💎',Nitro:'💜',ETFB:'✨',SailorPiece:'⚔️',CustomRole:'🎨',all:'📋'};
+      const emoji = catEmoji[category] || '📋';
+      const fields = filtered.slice(0,25).map(c => ({
+        name: `${emoji} ${c.claimId} — ${c.itemName}`,
+        value: `👤 **${c.username}** (<@${c.userId}>)\n📅 ${ts(c.claimedAt,'R')}${c.roleDetails?`\n🎨 Role: **${c.roleDetails.name}** | ${c.roleDetails.color}`:''}${c.robloxUsername&&c.robloxUsername!=='N/A'?`\n🎮 Roblox: \`${c.robloxUsername}\``:''}`,
+        inline: false
+      }));
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x5865F2).setTitle(`📋 Claims — ${category==='all'?'All':category} (${filtered.length})`).addFields(fields).setFooter({text:'Use /claimed <id> or /deny-claim <id> to process'})]});
+    }
+
     if (cmd==='test-ping') {
       if (!isTestSrv) return reply({embeds:[errEmbed('This command is only available in the test server!')],flags:MessageFlags.Ephemeral});
       if (!hasTesterRole(interaction.member)) return reply({embeds:[errEmbed('You need the Tester role!')],flags:MessageFlags.Ephemeral});
@@ -1973,11 +2071,11 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='blackjack') {
+      await interaction.deferReply();
       const bet = interaction.options.getInteger('bet');
       const u   = await getUser(me.id, me.username);
-      if (u.coins < bet) return reply({embeds:[errEmbed(`You only have **${u.coins.toLocaleString()}** ${COIN_EMOJI}!`)],flags:MessageFlags.Ephemeral});
-      if (activeBlackjack.has(me.id)) return reply({embeds:[errEmbed('You already have a game in progress!')],flags:MessageFlags.Ephemeral});
-      await interaction.deferReply();
+      if (u.coins < bet) return interaction.editReply({embeds:[errEmbed(`You only have **${u.coins.toLocaleString()}** ${COIN_EMOJI}!`)]});
+      if (activeBlackjack.has(me.id)) return interaction.editReply({embeds:[errEmbed('You already have a game in progress!')]});
 
       const playerHand = [bjDraw(), bjDraw()];
       const dealerHand = [bjDraw(), bjDraw()];
