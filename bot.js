@@ -58,7 +58,7 @@ const GTN_CHANNEL_ID   = '1482076857321914378';
 const DROP_CHANNEL_ID  = '1481582652430483579';
 const LOG_CHANNEL_ID   = '1482112291750150214';
 const TEST_GUILD_ID    = '1485636323854389360';
-const TESTER_ROLE_NAME = 'Testers';
+const TESTER_ROLE_NAME = 'Tester';
 
 function isTestServer(guildId) { return guildId === TEST_GUILD_ID; }
 function hasTesterRole(member) {
@@ -547,8 +547,9 @@ client.once('ready', async () => {
     try {
       const { REST, Routes } = require('discord.js');
       const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-      const data = await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: slashDefs });
-      console.log(`✅ Registered ${data.length} slash commands`);
+      const data  = await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),        { body: slashDefs });
+      const data2 = await rest.put(Routes.applicationGuildCommands(CLIENT_ID, TEST_GUILD_ID), { body: slashDefs });
+      console.log(`✅ Registered ${data.length} cmds to main + ${data2.length} cmds to test server`);
     } catch (e) { console.error('Slash command registration failed:', e.message); }
   }
   try { await dbRead('users'); console.log('✅ Cache warmed'); } catch (e) { console.error('Cache warmup error:', e.message); }
