@@ -373,6 +373,7 @@ const slashDefs = [
   new SCB().setName('take').setDescription('[ADMIN] Take coins from a user').setDefaultMemberPermissions(PFB.Administrator).addUserOption(o=>o.setName('user').setDescription('Target').setRequired(true)).addIntegerOption(o=>o.setName('amount').setDescription('Amount (ignored if all=true)').setRequired(false).setMinValue(1)).addBooleanOption(o=>o.setName('all').setDescription('Take ALL coins from the user').setRequired(false)),
   new SCB().setName('remove-inv').setDescription('[ADMIN] Remove an item from a user inventory').setDefaultMemberPermissions(PFB.Administrator).addUserOption(o=>o.setName('user').setDescription('Target user').setRequired(true)).addStringOption(o=>o.setName('claim_id').setDescription('Claim ID to remove').setRequired(true)),
   new SCB().setName('check-inventory').setDescription('[ADMIN] View any user inventory').setDefaultMemberPermissions(PFB.Administrator).addUserOption(o=>o.setName('user').setDescription('Target user').setRequired(true)),
+  new SCB().setName('backup-coins').setDescription('[ADMIN] Export all user coin balances as a readable list').setDefaultMemberPermissions(PFB.Administrator),
   new SCB().setName('make-code').setDescription('[ADMIN] Create a permanent saved code').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('code').setDescription('The code word').setRequired(true))
     .addIntegerOption(o=>o.setName('coins').setDescription('Coins to reward').setRequired(true).setMinValue(1))
@@ -781,7 +782,8 @@ async function cmdShop(reply) {
   const etfbLines=SHOP.filter(i=>i.category==='ETFB').map(i=>`${i.id==='etfb_cel'?'✨':'🌟'} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const NITRO_EMOJI='<:Nitro:1482656844655624192>';
   const nitroLines=SHOP.filter(i=>i.category==='Nitro').map(i=>`${NITRO_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
-  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines,inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id>'})] });
+  const roleLines=SHOP.filter(i=>i.category==='CustomRole').map(i=>`🎨 **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
+  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines||'—',inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id>'})] });
 }
 
 async function cmdInventory(reply, userId, username) {
@@ -939,7 +941,22 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You picked **${num}**! Wait for the round to end.`)],flags:MessageFlags.Ephemeral});
     }
 
-    // Greentea join
+    // Spin the Wheel enter
+    if (cid.startsWith('sw_enter_')) {
+      const swId = cid.replace('sw_enter_','');
+      const state = [...activeSpinWheel.values()].find(s=>s.swId===swId);
+      if (!state) return interaction.reply({embeds:[errEmbed('This event has ended.')],flags:MessageFlags.Ephemeral});
+      if (state.entries.has(interaction.user.id)) return interaction.reply({embeds:[errEmbed('You already entered!')],flags:MessageFlags.Ephemeral});
+      if (state.entries.size >= state.maxEntries) return interaction.reply({embeds:[errEmbed(`Max entries reached (${state.maxEntries})!`)],flags:MessageFlags.Ephemeral});
+      state.entries.add(interaction.user.id);
+      try {
+        const ch = await client.channels.fetch(state.channelId);
+        const msg = await ch.messages.fetch(state.msgId);
+        const existingEmbed = msg.embeds[0];
+        await msg.edit({embeds:[EmbedBuilder.from(existingEmbed).setFooter({text:`${state.entries.size}/${state.maxEntries} entered`})],components:msg.components});
+      } catch {}
+      return interaction.reply({embeds:[new EmbedBuilder().setColor(0x57F287).setDescription(`✅ You entered the Spin the Wheel! **${state.entries.size}/${state.maxEntries}** entered.`)],flags:MessageFlags.Ephemeral});
+    }
 
     // ── SAB STOCK VIEW ──
     if (cid === 'sab_view') {
@@ -953,7 +970,7 @@ client.on('interactionCreate', async interaction => {
     return; // no matching button
   }
 
-  // ── CHECK-USER PAGINATION ──
+  // ── CHECK-USER PAGINATION (also inside button handler above via fall-through) ──
   if (interaction.isButton() && (interaction.customId.startsWith('cu_prev_') || interaction.customId.startsWith('cu_next_'))) {
     const [,dir, pageStr] = interaction.customId.split('_');
     const currentPage = parseInt(pageStr);
@@ -1245,6 +1262,63 @@ client.on('interactionCreate', async interaction => {
         dmSent=true;
       } catch {}
       return interaction.editReply({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('❌ Claim Denied').addFields({name:'Claim',value:`\`${claimId}\``,inline:true},{name:'User',value:`<@${claim.userId}>`,inline:true},{name:'Item',value:claim.itemName,inline:true},{name:'Reason',value:reason||'No reason given',inline:false},{name:'Refunded',value:'✅ Inventory',inline:true},{name:'Stock',value:'✅ Restored',inline:true},{name:'DM',value:dmSent?'✅ Sent':'❌ DMs off',inline:true})]});
+    }
+
+
+    if (cmd==='backup-coins') {
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const users = await dbRead('users');
+      const entries = Object.values(users).filter(u => u && u.coins > 0).sort((a,b) => b.coins - a.coins);
+      if (!entries.length) return interaction.editReply({embeds:[errEmbed('No users with coins found.')]});
+      // Build a readable list in chunks (Discord 4096 char limit)
+      const lines = entries.map(u => `<@${u.id}> — **${u.coins.toLocaleString()}** coins (${u.username})`);
+      const chunks = [];
+      let chunk = '';
+      for (const line of lines) {
+        if ((chunk + '\n' + line).length > 3800) { chunks.push(chunk); chunk = line; }
+        else chunk = chunk ? chunk + '\n' + line : line;
+      }
+      if (chunk) chunks.push(chunk);
+      const embeds = chunks.map((ch, i) => new EmbedBuilder()
+        .setColor(0xF1C40F)
+        .setTitle(i===0 ? `💰 Coin Backup — ${entries.length} users` : '💰 Coin Backup (continued)')
+        .setDescription(ch)
+        .setFooter(i===0 ? {text:`Total snapshot: ${entries.reduce((s,u)=>s+u.coins,0).toLocaleString()} coins across ${entries.length} users`} : null)
+      );
+      // Send first as editReply, rest as followUp
+      await interaction.editReply({embeds:[embeds[0]]});
+      for (let i=1;i<embeds.length;i++) {
+        await interaction.followUp({embeds:[embeds[i]],flags:MessageFlags.Ephemeral});
+      }
+      sendLog(client,{title:'💰 Coin Backup Taken',color:0xF1C40F,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Users',value:`${entries.length}`,inline:true},{name:'Total Coins',value:`${entries.reduce((s,u)=>s+u.coins,0).toLocaleString()}`,inline:true}]});
+      return;
+    }
+
+
+
+    if (cmd==='backup-coins') {
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const users = await dbRead('users');
+      const entries = Object.values(users).filter(u => u && u.coins > 0).sort((a,b) => b.coins - a.coins);
+      if (!entries.length) return interaction.editReply({embeds:[errEmbed('No users with coins found.')]});
+      const lineList = entries.map(u => `<@${u.id}> — **${u.coins.toLocaleString()}** coins (${u.username})`);
+      const chunks = [];
+      let chunk = '';
+      for (const line of lineList) {
+        if ((chunk + '\n' + line).length > 3800) { chunks.push(chunk); chunk = line; }
+        else chunk = chunk ? chunk + '\n' + line : line;
+      }
+      if (chunk) chunks.push(chunk);
+      const total = entries.reduce((s,u)=>s+u.coins,0);
+      const embeds = chunks.map((ch, i) => new EmbedBuilder().setColor(0xF1C40F)
+        .setTitle(i===0 ? `💰 Coin Backup — ${entries.length} users` : '💰 (continued)')
+        .setDescription(ch)
+      );
+      if (embeds[0]) embeds[0].setFooter({text:`${total.toLocaleString()} coins across ${entries.length} users`});
+      await interaction.editReply({embeds:[embeds[0]]});
+      for (let i=1;i<embeds.length;i++) await interaction.followUp({embeds:[embeds[i]],flags:MessageFlags.Ephemeral});
+      sendLog(client,{title:'💰 Coin Backup Taken',color:0xF1C40F,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'Users',value:`${entries.length}`,inline:true},{name:'Total',value:`${total.toLocaleString()} coins`,inline:true}]});
+      return;
     }
 
     if (cmd==='give') {
