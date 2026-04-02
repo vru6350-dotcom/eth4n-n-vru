@@ -137,21 +137,22 @@ const SHOP = [
   // ── TESTING SERVER SHOP ──
   { id: 'test_role',         name: 'Custom Role',         cost: 100, category: 'TestCustomRole', robuxAmt: 0 },
   // PS99
-  { id: 'ps99_200m',         name: '200M Gems',           cost: 100, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_400m',         name: '400M Gems',           cost: 200, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_600m',         name: '600M Gems',           cost: 300, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_800m',         name: '800M Gems',           cost: 400, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_1b',           name: '1B Gems',             cost: 500, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_2b',           name: '2B Gems',             cost: 600, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_4b',           name: '4B Gems',             cost: 700, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_6b',           name: '6B Gems',             cost: 800, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_8b',           name: '8B Gems',             cost: 900, category: 'PS99',           robuxAmt: 0 },
-  { id: 'ps99_10b',          name: '10B Gems',            cost: 1000,category: 'PS99',           robuxAmt: 0 },
+  { id: 'ps99_200m',  name: '200M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_400m',  name: '400M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_600m',  name: '600M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_800m',  name: '800M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1b',    name: '1B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_2b',    name: '2B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
   // Sailor Piece
   { id: 'sp_sukuna_v1',      name: 'Sukuna v1 Set',       cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_gojo_v1',        name: 'Gojo v1 Set',         cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_race_100',       name: '100 Race Rerolls',    cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_trait_100',      name: '100 Trait Rerolls',   cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
+  { id: 'sp_aura_crate',     name: 'Aura Crate',          cost: 600, category: 'SailorPiece',    robuxAmt: 0 },
 ];
 
 // ══════════════════════════════════════════
@@ -159,7 +160,7 @@ const SHOP = [
 //  ⚠️  Create a new bin at jsonbin.io and paste the ID for CODES below
 // ══════════════════════════════════════════
 const BIN_IDS = {
-  users:  '69ccc61c856a682189eb44b3',
+  users:  '69b13ea5c3097a1dd516fe70',
   store:  '69b13e7dc3097a1dd516fdc5',
   meta:   '69b13e8fb7ec241ddc5c5aa3',
   claims: '69b13ebbb7ec241ddc5c5b4b',
@@ -475,15 +476,16 @@ const slashDefs = [
   new SCB().setName('test-redeem').setDescription('[TEST] Buy a testing shop item').addStringOption(o=>o.setName('item').setDescription('Item ID').setRequired(true).addChoices(
     {name:'Custom Role — 100 coins',value:'test_role'},
     {name:'PS99 200M Gems — 100 coins',value:'ps99_200m'},
-    {name:'PS99 400M Gems — 200 coins',value:'ps99_400m'},
-    {name:'PS99 600M Gems — 300 coins',value:'ps99_600m'},
-    {name:'PS99 800M Gems — 400 coins',value:'ps99_800m'},
-    {name:'PS99 1B Gems — 500 coins',value:'ps99_1b'},
-    {name:'PS99 2B Gems — 600 coins',value:'ps99_2b'},
-    {name:'PS99 4B Gems — 700 coins',value:'ps99_4b'},
-    {name:'PS99 6B Gems — 800 coins',value:'ps99_6b'},
-    {name:'PS99 8B Gems — 900 coins',value:'ps99_8b'},
-    {name:'PS99 10B Gems — 1000 coins',value:'ps99_10b'},
+    {name:'PS99 400M Gems — 100 coins',value:'ps99_400m'},
+    {name:'PS99 600M Gems — 100 coins',value:'ps99_600m'},
+    {name:'PS99 800M Gems — 100 coins',value:'ps99_800m'},
+    {name:'PS99 1B Gems — 100 coins',value:'ps99_1b'},
+    {name:'PS99 1.2B Gems — 100 coins',value:'ps99_1_2b'},
+    {name:'PS99 1.4B Gems — 100 coins',value:'ps99_1_4b'},
+    {name:'PS99 1.6B Gems — 100 coins',value:'ps99_1_6b'},
+    {name:'PS99 1.8B Gems — 100 coins',value:'ps99_1_8b'},
+    {name:'PS99 2B Gems — 100 coins',value:'ps99_2b'},
+    {name:'SP Aura Crate — 600 coins',value:'sp_aura_crate'},
     {name:'SP Sukuna v1 Set — 100 coins',value:'sp_sukuna_v1'},
     {name:'SP Gojo v1 Set — 100 coins',value:'sp_gojo_v1'},
     {name:'SP 100 Race Rerolls — 100 coins',value:'sp_race_100'},
