@@ -161,15 +161,15 @@ const SHOP = [
 // ══════════════════════════════════════════
 const BIN_IDS = {
   users:  '69ce11bfaaba882197b9014b',
-  store:  '69b13e7dc3097a1dd516fdc5',
-  meta:   '69b13e8fb7ec241ddc5c5aa3',
-  claims: '69b13ebbb7ec241ddc5c5b4b',
+  store:  '69ce19d4856a682189f0f165',
+  meta:   '69ce198036566621a870772b',
+  claims: '69ce19d1856a682189f0f13a',
   warns:  '69b13ebbb7ec241ddc5c5b4c',
-  codes:   '69b3f981b7ec241ddc65e003',
+  codes:   '69ce1996856a682189f0f069',
   roblox:  '69b663fab7ec241ddc6d458d',
   sab:     '69be9ee7c3097a1dd546d40a',
   giveaway:'69be9ed8b7ec241ddc8c18c5',
-  vouches: '69bea2d3b7ec241ddc8c282e'
+  vouches: '69ce198d36566621a8707759'
 };
 const DEFAULTS = {
   users:  {},
@@ -559,10 +559,8 @@ client.once('ready', async () => {
   try { await dbRead('users'); console.log('✅ Cache warmed'); } catch (e) { console.error('Cache warmup error:', e.message); }
   // ── ONE-TIME COIN RESTORE — remove after first successful deploy ──
   try {
-    const existingUsers = await binRead('users');
-    const isBlank = !existingUsers || Object.keys(existingUsers).filter(k=>k!=='_init').length === 0;
-    if (isBlank) {
-      console.log('🔄 Restoring 390 users from backup...');
+    console.log('🔄 Force-restoring 390 users from backup...');
+    if (true) {
       const restored = {
   "1135495327185637486": {"id":"1135495327185637486","username":"redking659","coins":1231,"totalEarned":1231,"lastDaily":null,"inventory":[],"redeemedCodes":[]},
   "1388101359051735080": {"id":"1388101359051735080","username":"mango05173","coins":984,"totalEarned":984,"lastDaily":null,"inventory":[],"redeemedCodes":[]},
