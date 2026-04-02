@@ -1,5 +1,7 @@
 process.on('unhandledRejection', e => console.error('Unhandled rejection:', e));
 process.on('uncaughtException',  e => console.error('Uncaught exception:', e));
+process.on('SIGTERM', async () => { console.log('SIGTERM received — flushing coins...'); if (cache.users) { try { await binWrite('users', cache.users); console.log('✅ Coins flushed on shutdown'); } catch(e) { console.error('Flush error:', e.message); } } process.exit(0); });
+process.on('SIGINT', async () => { if (cache.users) { try { await binWrite('users', cache.users); } catch {} } process.exit(0); });
 
 const {
   Client, GatewayIntentBits,
@@ -133,7 +135,7 @@ const SHOP = [
   { id: 'etfb_cel',   name: 'Celestial',  cost: 100,  category: 'ETFB',  robuxAmt: 0   },
   { id: 'etfb_div',   name: 'Divine',     cost: 250,  category: 'ETFB',  robuxAmt: 0   },
   { id: 'nitro',      name: 'Nitro Method',  cost: 1000, category: 'Nitro',       robuxAmt: 0 },
-  { id: 'custom_role', name: 'Custom Role',   cost: 800,  category: 'CustomRole',  robuxAmt: 0 },
+  { id: 'custom_role', name: 'Custom Role',   cost: 100,  category: 'CustomRole',  robuxAmt: 0 },
   // ── TESTING SERVER SHOP ──
   { id: 'test_role',         name: 'Custom Role',         cost: 100, category: 'TestCustomRole', robuxAmt: 0 },
   // PS99
@@ -272,7 +274,7 @@ async function getUser(userId, username) {
   if (!users[userId].inventory)     users[userId].inventory     = [];
   return users[userId];
 }
-async function saveUser(u) { if (u.coins < 0) u.coins = Math.abs(u.coins); const users = await dbRead('users'); users[u.id] = u; await dbWrite('users', users); }
+async function saveUser(u) { if (u.coins < 0) u.coins = Math.abs(u.coins); const users = await dbRead('users'); users[u.id] = u; cache.users = users; cacheTime.users = Date.now(); await binWrite('users', users); }
 async function getLeaderboard(n) { const users = await dbRead('users'); return Object.values(users).sort((a,b)=>b.coins-a.coins).slice(0,n); }
 async function getStore()    { return dbRead('store'); }
 async function saveStore(s)  { await dbWrite('store', s); cacheTime.store = 0; }
@@ -355,7 +357,7 @@ const slashDefs = [
     {name:'125 Robux — 500 coins',value:'robux_125'},{name:'150 Robux — 600 coins',value:'robux_150'},
     {name:'175 Robux — 700 coins',value:'robux_175'},{name:'200 Robux — 800 coins',value:'robux_200'},
     {name:'225 Robux — 900 coins',value:'robux_225'},{name:'250 Robux — 1000 coins',value:'robux_250'},
-    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 800 coins',value:'custom_role'}
+    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'}
   )),
   new SCB().setName('inventory').setDescription('View your unclaimed items'),
   new SCB().setName('claim').setDescription('Submit a delivery claim for an item').addStringOption(o=>o.setName('id').setDescription('Claim ID, e.g. C1').setRequired(true)),
@@ -511,7 +513,7 @@ function scheduleCoinFlush() {
     if (!cache.users) return;
     try { await binWrite('users', cache.users); cacheTime.users = Date.now(); }
     catch (e) { console.error('Coin flush error:', e.message); setTimeout(scheduleCoinFlush, 5000); }
-  }, 5000);
+  }, 2000);
 }
 
 const client = new Client({
