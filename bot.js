@@ -160,7 +160,7 @@ const SHOP = [
 //  ⚠️  Create a new bin at jsonbin.io and paste the ID for CODES below
 // ══════════════════════════════════════════
 const BIN_IDS = {
-  users:  '69b13ea5c3097a1dd516fe70',
+  users:  '69ce11bfaaba882197b9014b',
   store:  '69b13e7dc3097a1dd516fdc5',
   meta:   '69b13e8fb7ec241ddc5c5aa3',
   claims: '69b13ebbb7ec241ddc5c5b4b',
