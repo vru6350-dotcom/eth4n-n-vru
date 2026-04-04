@@ -137,7 +137,7 @@ const SHOP = [
   { id: 'nitro',      name: 'Nitro Method',  cost: 1000, category: 'Nitro',       robuxAmt: 0 },
   { id: 'custom_role', name: 'Custom Role',   cost: 100,  category: 'CustomRole',  robuxAmt: 0 },
   // ── TESTING SERVER SHOP ──
-  { id: 'test_role',         name: 'Custom Role',         cost: 100, category: 'TestCustomRole', robuxAmt: 0 },
+
   // PS99
   { id: 'ps99_200m',  name: '200M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
   { id: 'ps99_400m',  name: '400M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
@@ -155,6 +155,7 @@ const SHOP = [
   { id: 'sp_race_100',       name: '100 Race Rerolls',    cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_trait_100',      name: '100 Trait Rerolls',   cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_aura_crate',     name: 'Aura Crate',          cost: 600, category: 'SailorPiece',    robuxAmt: 0 },
+  { id: 'crunchyroll',     name: 'Crunchyroll Account', cost: 0,   category: 'Crunchyroll',  robuxAmt: 0, inviteOnly: true },
 ];
 
 // ══════════════════════════════════════════
@@ -168,10 +169,11 @@ const BIN_IDS = {
   claims: '69ce19d1856a682189f0f13a',
   warns:  '69b13ebbb7ec241ddc5c5b4c',
   codes:   '69ce1996856a682189f0f069',
-  roblox:  '69b663fab7ec241ddc6d458d',
-  sab:     '69be9ee7c3097a1dd546d40a',
+  roblox:  '69d10a5aaaba882197c4020a',
+  sab:     '69d10a5836566621a87b3961',
   giveaway:'69be9ed8b7ec241ddc8c18c5',
-  vouches: '69ce198d36566621a8707759'
+  vouches: '69d11234856a682189fbe655',
+  crunchyroll: '69d11871aaba882197c4324a'
 };
 const DEFAULTS = {
   users:  {},
@@ -180,14 +182,15 @@ const DEFAULTS = {
   sab:    [],
   giveaway: {},
   vouches: {},
+  crunchyroll: { stock: 0, redeemed: [] },
   meta:   { stockMsgId: null, claimCounter: 0 },
   claims: [],
   warns:  {},
   codes:  {},
 };
-const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null };
-const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0 };
-const CACHE_TTL = { users: Infinity, store: 0, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000 };
+const cache     = { users: null, store: null, meta: null, claims: null, warns: null, codes: null, roblox: null, sab: null, giveaway: null, vouches: null, crunchyroll: null };
+const cacheTime = { users: 0, store: 0, meta: 0, claims: 0, warns: 0, codes: 0, roblox: 0, sab: 0, giveaway: 0, vouches: 0, crunchyroll: 0 };
+const CACHE_TTL = { users: Infinity, store: 0, meta: 30_000, claims: 30_000, warns: 30_000, codes: 60_000, roblox: 30_000, sab: 30_000, giveaway: 30_000, vouches: 30_000, crunchyroll: 30_000 };
 
 async function binRead(name) {
   const res = await safeFetch(`https://api.jsonbin.io/v3/b/${BIN_IDS[name]}/latest`, {
@@ -322,7 +325,8 @@ function stockEmbed(store) {
       { name: '💎 Robux',      value: store.robux      > 0 ? `**${store.robux}** available`      : '❌ Out of stock', inline: true },
       { name: '✨ Celestials', value: store.celestials > 0 ? `**${store.celestials}x** available` : '❌ Out of stock', inline: true },
       { name: '🌟 Divines',   value: store.divines    > 0 ? `**${store.divines}x** available`    : '❌ Out of stock', inline: true },
-      { name: '🛒 SAB',        value: '🔽 Click below to view!', inline: true }
+      { name: '🛒 SAB',        value: '🔽 Click below to view!', inline: true },
+      { name: '🎌 Crunchyroll', value: store.crunchyroll > 0 ? `**${store.crunchyroll}** account(s) available` : '❌ Out of stock', inline: true }
     ).setFooter({ text: 'Stock updated by admins' });
 }
 function stockComponents() {
@@ -335,7 +339,9 @@ async function updateStockEmbed(clientRef) {
   try {
     const ch = await clientRef.channels.fetch(STOCK_CHANNEL_ID);
     if (!ch) return;
-    const store = await getStore(), embed = stockEmbed(store), meta = await getMeta();
+    const store = await getStore(), meta = await getMeta();
+    try { const cr = await dbRead('crunchyroll'); store.crunchyroll = cr.stock||0; } catch {}
+    const embed = stockEmbed(store);
     if (meta.stockMsgId) {
       try { const m = await ch.messages.fetch(meta.stockMsgId); await m.edit({ embeds: [embed], components: stockComponents() }); return; } catch {}
     }
@@ -357,7 +363,7 @@ const slashDefs = [
     {name:'125 Robux — 500 coins',value:'robux_125'},{name:'150 Robux — 600 coins',value:'robux_150'},
     {name:'175 Robux — 700 coins',value:'robux_175'},{name:'200 Robux — 800 coins',value:'robux_200'},
     {name:'225 Robux — 900 coins',value:'robux_225'},{name:'250 Robux — 1000 coins',value:'robux_250'},
-    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'}
+    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'},{name:'PS99 200M Gems — 100 coins',value:'ps99_200m'},{name:'PS99 400M Gems — 100 coins',value:'ps99_400m'},{name:'PS99 600M Gems — 100 coins',value:'ps99_600m'},{name:'PS99 800M Gems — 100 coins',value:'ps99_800m'},{name:'PS99 1B Gems — 100 coins',value:'ps99_1b'},{name:'PS99 1.2B Gems — 100 coins',value:'ps99_1_2b'},{name:'PS99 1.4B Gems — 100 coins',value:'ps99_1_4b'},{name:'PS99 1.6B Gems — 100 coins',value:'ps99_1_6b'},{name:'PS99 1.8B Gems — 100 coins',value:'ps99_1_8b'},{name:'PS99 2B Gems — 100 coins',value:'ps99_2b'},{name:'SP Sukuna v1 Set — 100 coins',value:'sp_sukuna_v1'},{name:'SP Gojo v1 Set — 100 coins',value:'sp_gojo_v1'},{name:'SP 100 Race Rerolls — 100 coins',value:'sp_race_100'},{name:'SP 100 Trait Rerolls — 100 coins',value:'sp_trait_100'},{name:'SP Aura Crate — 600 coins',value:'sp_aura_crate'}
   )),
   new SCB().setName('inventory').setDescription('View your unclaimed items'),
   new SCB().setName('claim').setDescription('Submit a delivery claim for an item').addStringOption(o=>o.setName('id').setDescription('Claim ID, e.g. C1').setRequired(true)),
@@ -441,6 +447,7 @@ const slashDefs = [
     .addStringOption(o=>o.setName('prize').setDescription('Prize description e.g. 500 coins').setRequired(true))
     .addIntegerOption(o=>o.setName('coins').setDescription('Coins to give each winner').setRequired(true).setMinValue(1))
     .addIntegerOption(o=>o.setName('winners').setDescription('Number of winners (default 1)').setRequired(false).setMinValue(1).setMaxValue(10)),
+  new SCB().setName('update-crunchyroll').setDescription('[ADMIN] Set Crunchyroll account stock').setDefaultMemberPermissions(PFB.Administrator).addIntegerOption(o=>o.setName('amount').setDescription('Number of accounts in stock').setRequired(true).setMinValue(0)),
   new SCB().setName('update-sab').setDescription('[ADMIN] Add/update a SAB stock item').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('item').setDescription('Item name').setRequired(true))
     .addStringOption(o=>o.setName('stock').setDescription('Stock type').setRequired(true).addChoices({name:'M (Multiple)',value:'M'},{name:'S (Single)',value:'S'}))
@@ -1192,7 +1199,10 @@ async function cmdShop(reply) {
   const NITRO_EMOJI='<:Nitro:1482656844655624192>';
   const nitroLines=SHOP.filter(i=>i.category==='Nitro').map(i=>`${NITRO_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const roleLines=SHOP.filter(i=>i.category==='CustomRole').map(i=>`🎨 **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
-  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines||'—',inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id>'})] });
+  const ps99Lines=SHOP.filter(i=>i.category==='PS99').map(i=>`💎 **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
+  const spLines=SHOP.filter(i=>i.category==='SailorPiece').map(i=>`⚔️ **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
+  const crLines=`🎌 **Crunchyroll Account** — \`6 invites\`  ·  \`crunchyroll\``;
+  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines||'—',inline:false},{name:'💎 PS99 Gems',value:ps99Lines||'—',inline:false},{name:'⚔️ Sailor Piece',value:spLines||'—',inline:false},{name:'🎌 Crunchyroll',value:crLines,inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id> | Crunchyroll requires 6 invites'})] });
 }
 
 async function cmdInventory(reply, userId, username) {
@@ -1574,17 +1584,35 @@ client.on('interactionCreate', async interaction => {
         return interaction.showModal(modal);
       }
 
-      // Nitro: no modal needed — auto-submit immediately
-      if (item.category==='Nitro') {
+      // Auto-submit categories (no modal needed)
+      const autoCategories = ['Nitro','PS99','SailorPiece','Crunchyroll'];
+      if (autoCategories.includes(item.category)) {
         await interaction.deferReply({flags:MessageFlags.Ephemeral});
+
+        // Crunchyroll: check stock
+        if (item.category==='Crunchyroll') {
+          const cr = await dbRead('crunchyroll');
+          if (!cr.stock || cr.stock <= 0) return interaction.editReply({embeds:[errEmbed('Crunchyroll accounts are out of stock!')]});
+          cr.stock--;
+          await dbWrite('crunchyroll', cr);
+        }
+
         u.inventory.splice(u.inventory.findIndex(i=>i.claimId===idArg),1);
         await saveUser(u);
+
+        // Build instructions per category
+        let instructions = '';
+        if (item.category==='PS99') instructions = `\n\n📝 **Your username:** \`${me.username}\`\nAn admin will send your gems in-game!`;
+        if (item.category==='SailorPiece') instructions = `\n\n📝 Add **vru4447** on Roblox to receive your item!`;
+        if (item.category==='Nitro') instructions = `\n\nAn admin will reach out to you shortly!`;
+        if (item.category==='Crunchyroll') instructions = `\n\nYou need **6 invites** to redeem this. An admin will DM you the account details!`;
+
         const claimsArr=await getClaims();
         const arr=Array.isArray(claimsArr)?claimsArr:[];
-        arr.push({claimId:idArg,userId:me.id,username:me.username,itemId:'nitro',itemName:'Nitro Method',category:'Nitro',robuxAmt:0,robloxUsername:'N/A',gamepassLink:null,claimedAt:Date.now(),status:'pending'});
+        arr.push({claimId:idArg,userId:me.id,username:me.username,itemId:item.id,itemName:item.name,category:item.category,robuxAmt:0,robloxUsername:me.username,gamepassLink:null,claimedAt:Date.now(),status:'pending'});
         await saveClaims(arr);
-        sendLog(client,{title:'📋 Claim Submitted',color:0x5865F2,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Claim ID',value:`\`${idArg}\``,inline:true},{name:'Item',value:'Nitro Method',inline:true}]});
-        return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('📬 Claim Submitted!').setDescription(`Your claim for **Nitro Method** has been submitted!\n\n**Claim ID:** \`${idArg}\`\n\nAn admin will reach out to you shortly!`)]});
+        sendLog(client,{title:'📋 Claim Submitted',color:0x5865F2,fields:[{name:'User',value:`<@${me.id}>`,inline:true},{name:'Claim ID',value:`\`${idArg}\``,inline:true},{name:'Item',value:item.name,inline:true},{name:'Category',value:item.category,inline:true}]});
+        return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('📬 Claim Submitted!').setDescription(`Your claim for **${item.name}** has been submitted!\n\n**Claim ID:** \`${idArg}\`${instructions}`)]});
       }
 
       const modal=new ModalBuilder().setCustomId(`claim_modal_${item.claimId}`).setTitle(`Claim: ${item.name}`);
@@ -2069,6 +2097,17 @@ client.on('interactionCreate', async interaction => {
       if (!matches.length) return interaction.editReply({embeds:[errEmbed(`No user found matching **${query}**`)]});
       const lines = matches.map(([uid, d]) => `<@${uid}> — Roblox: \`${d.robloxUsername}\``).join('\n');
       return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x5865F2).setTitle(`🔍 Found ${matches.length} result(s)`).setDescription(lines)]});
+    }
+
+
+    if (cmd==='update-crunchyroll') {
+      await interaction.deferReply({flags:MessageFlags.Ephemeral});
+      const amount = interaction.options.getInteger('amount');
+      const cr = await dbRead('crunchyroll');
+      cr.stock = amount;
+      await dbWrite('crunchyroll', cr);
+      sendLog(client,{title:'🎌 Crunchyroll Stock Updated',color:0xF47521,fields:[{name:'Admin',value:`<@${me.id}>`,inline:true},{name:'New Stock',value:`${amount}`,inline:true}]});
+      return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('✅ Crunchyroll Stock Updated').setDescription(`Stock set to **${amount}** account(s).`)]});
     }
 
     if (cmd==='update-sab') {
