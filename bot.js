@@ -140,15 +140,15 @@ const SHOP = [
 
   // PS99
   { id: 'ps99_200m',  name: '200M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_400m',  name: '400M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_600m',  name: '600M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_400m',  name: '400M Gems',  cost: 200, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_600m',  name: '600M Gems',  cost: 300, category: 'PS99', robuxAmt: 0 },
   { id: 'ps99_800m',  name: '800M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1b',    name: '1B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_2b',    name: '2B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1b',    name: '1B Gems',    cost: 500, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 600, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 700, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 800, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 900, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_2b',    name: '2B Gems',    cost: 1000, category: 'PS99', robuxAmt: 0 },
   // Sailor Piece
   { id: 'sp_sukuna_v1',      name: 'Sukuna v1 Set',       cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_gojo_v1',        name: 'Gojo v1 Set',         cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
