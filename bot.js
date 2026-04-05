@@ -357,13 +357,26 @@ const slashDefs = [
   new SCB().setName('daily').setDescription('Claim coins (24h cooldown)'),
   new SCB().setName('rain').setDescription('[ADMIN] Rain coins — react to enter, 2 min timer').setDefaultMemberPermissions(PFB.Administrator).addIntegerOption(o=>o.setName('amount').setDescription('Total coins to rain').setRequired(true).setMinValue(10)),
   new SCB().setName('shop').setDescription('View all items and prices'),
-  new SCB().setName('redeem').setDescription('Buy an item from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
+  new SCB().setName('redeem').setDescription('Buy Robux or ETFB from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
     {name:'25 Robux — 100 coins',value:'robux_25'},{name:'50 Robux — 200 coins',value:'robux_50'},
     {name:'75 Robux — 300 coins',value:'robux_75'},{name:'100 Robux — 400 coins',value:'robux_100'},
     {name:'125 Robux — 500 coins',value:'robux_125'},{name:'150 Robux — 600 coins',value:'robux_150'},
     {name:'175 Robux — 700 coins',value:'robux_175'},{name:'200 Robux — 800 coins',value:'robux_200'},
     {name:'225 Robux — 900 coins',value:'robux_225'},{name:'250 Robux — 1000 coins',value:'robux_250'},
-    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},{name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'},{name:'PS99 200M Gems — 100 coins',value:'ps99_200m'},{name:'PS99 400M Gems — 100 coins',value:'ps99_400m'},{name:'PS99 600M Gems — 100 coins',value:'ps99_600m'},{name:'PS99 800M Gems — 100 coins',value:'ps99_800m'},{name:'PS99 1B Gems — 100 coins',value:'ps99_1b'},{name:'PS99 1.2B Gems — 100 coins',value:'ps99_1_2b'},{name:'PS99 1.4B Gems — 100 coins',value:'ps99_1_4b'},{name:'PS99 1.6B Gems — 100 coins',value:'ps99_1_6b'},{name:'PS99 1.8B Gems — 100 coins',value:'ps99_1_8b'},{name:'PS99 2B Gems — 100 coins',value:'ps99_2b'},{name:'SP Sukuna v1 Set — 100 coins',value:'sp_sukuna_v1'},{name:'SP Gojo v1 Set — 100 coins',value:'sp_gojo_v1'},{name:'SP 100 Race Rerolls — 100 coins',value:'sp_race_100'},{name:'SP 100 Trait Rerolls — 100 coins',value:'sp_trait_100'},{name:'SP Aura Crate — 600 coins',value:'sp_aura_crate'}
+    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},
+    {name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'}
+  )),
+  new SCB().setName('redeem-ps99').setDescription('Buy PS99 Gems from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
+    {name:'200M Gems — 100 coins',value:'ps99_200m'},{name:'400M Gems — 100 coins',value:'ps99_400m'},
+    {name:'600M Gems — 100 coins',value:'ps99_600m'},{name:'800M Gems — 100 coins',value:'ps99_800m'},
+    {name:'1B Gems — 100 coins',value:'ps99_1b'},{name:'1.2B Gems — 100 coins',value:'ps99_1_2b'},
+    {name:'1.4B Gems — 100 coins',value:'ps99_1_4b'},{name:'1.6B Gems — 100 coins',value:'ps99_1_6b'},
+    {name:'1.8B Gems — 100 coins',value:'ps99_1_8b'},{name:'2B Gems — 100 coins',value:'ps99_2b'}
+  )),
+  new SCB().setName('redeem-sp').setDescription('Buy Sailor Piece items from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
+    {name:'Sukuna v1 Set — 100 coins',value:'sp_sukuna_v1'},{name:'Gojo v1 Set — 100 coins',value:'sp_gojo_v1'},
+    {name:'100 Race Rerolls — 100 coins',value:'sp_race_100'},{name:'100 Trait Rerolls — 100 coins',value:'sp_trait_100'},
+    {name:'Aura Crate — 600 coins',value:'sp_aura_crate'}
   )),
   new SCB().setName('inventory').setDescription('View your unclaimed items'),
   new SCB().setName('claim').setDescription('Submit a delivery claim for an item').addStringOption(o=>o.setName('id').setDescription('Claim ID, e.g. C1').setRequired(true)),
@@ -1567,7 +1580,7 @@ client.on('interactionCreate', async interaction => {
     if (cmd==='adminhelp')   return await cmdAdminHelp(reply);
     if (cmd==='use-code')    return await cmdUseCode(reply, me.id, me.username, interaction.options.getString('code'));
     if (cmd==='rain') { await interaction.deferReply(); return await cmdRain(interaction, interaction.guild, me.id, me.username, interaction.options.getInteger('amount')); }
-    if (cmd==='redeem') { await interaction.deferReply(); return await cmdRedeem(p=>interaction.editReply(p), me.id, me.username, interaction.options.getString('item')); }
+    if (cmd==='redeem'||cmd==='redeem-ps99'||cmd==='redeem-sp') { await interaction.deferReply(); return await cmdRedeem(p=>interaction.editReply(p), me.id, me.username, interaction.options.getString('item')); }
 
     if (cmd==='claim') {
       const idArg=interaction.options.getString('id').toUpperCase();
