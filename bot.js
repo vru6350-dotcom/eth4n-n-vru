@@ -143,22 +143,22 @@ const SHOP = [
 
   // PS99
   { id: 'ps99_200m',  name: '200M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_400m',  name: '400M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_600m',  name: '600M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_800m',  name: '800M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1b',    name: '1B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_2b',    name: '2B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_400m',  name: '400M Gems',  cost: 200, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_600m',  name: '600M Gems',  cost: 300, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_800m',  name: '800M Gems',  cost: 400, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1b',    name: '1B Gems',    cost: 500, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 600, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 700, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 800, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 900, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_2b',    name: '2B Gems',    cost: 1000, category: 'PS99', robuxAmt: 0 },
   // Sailor Piece
   { id: 'sp_sukuna_v1',      name: 'Sukuna v1 Set',       cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_gojo_v1',        name: 'Gojo v1 Set',         cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_race_100',       name: '100 Race Rerolls',    cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_trait_100',      name: '100 Trait Rerolls',   cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_aura_crate',     name: 'Aura Crate',          cost: 600, category: 'SailorPiece',    robuxAmt: 0 },
-  { id: 'crunchyroll',     name: 'Crunchyroll Account', cost: 0,   category: 'Crunchyroll',  robuxAmt: 0, inviteOnly: true },
+  { id: 'crunchyroll',     name: 'Crunchyroll Account', cost: 600, category: 'Crunchyroll',  robuxAmt: 0 },
 ];
 
 // ══════════════════════════════════════════
@@ -170,7 +170,7 @@ const BIN_IDS = {
   store:  '69ce19d4856a682189f0f165',
   meta:   '69ce198036566621a870772b',
   claims: '69ce19d1856a682189f0f13a',
-  warns:  '69b13ebbb7ec241ddc5c5b4c',
+  warns:  '69d35ba0856a682189031002',
   codes:   '69ce1996856a682189f0f069',
   roblox:  '69d10a5aaaba882197c4020a',
   sab:     '69d10a5836566621a87b3961',
@@ -280,7 +280,7 @@ async function getUser(userId, username) {
   if (!users[userId].inventory)     users[userId].inventory     = [];
   return users[userId];
 }
-async function saveUser(u) { if (u.coins < 0) u.coins = Math.abs(u.coins); const users = await dbRead('users'); users[u.id] = u; cache.users = users; cacheTime.users = Date.now(); await binWrite('users', users); }
+async function saveUser(u) { if (u.coins < 0) u.coins = Math.abs(u.coins); const users = await dbRead('users'); users[u.id] = u; cache.users = users; cacheTime.users = Date.now(); scheduleCoinFlush(); }
 async function getLeaderboard(n) { const users = await dbRead('users'); return Object.values(users).sort((a,b)=>b.coins-a.coins).slice(0,n); }
 async function getStore()    { return dbRead('store'); }
 async function saveStore(s)  { await dbWrite('store', s); cacheTime.store = 0; }
@@ -367,7 +367,7 @@ const slashDefs = [
     {name:'175 Robux — 700 coins',value:'robux_175'},{name:'200 Robux — 800 coins',value:'robux_200'},
     {name:'225 Robux — 900 coins',value:'robux_225'},{name:'250 Robux — 1000 coins',value:'robux_250'},
     {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},
-    {name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'}
+    {name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'},{name:'Crunchyroll Account — 600 coins',value:'crunchyroll'}
   )),
   new SCB().setName('redeem-ps99').setDescription('Buy PS99 Gems from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
     {name:'200M Gems — 100 coins',value:'ps99_200m'},{name:'400M Gems — 100 coins',value:'ps99_400m'},
@@ -536,7 +536,7 @@ function scheduleCoinFlush() {
     if (!cache.users) return;
     try { await binWrite('users', cache.users); cacheTime.users = Date.now(); }
     catch (e) { console.error('Coin flush error:', e.message); setTimeout(scheduleCoinFlush, 5000); }
-  }, 2000);
+  }, 30000);
 }
 
 const client = new Client({
@@ -1216,7 +1216,7 @@ client.on('interactionCreate', async interaction => {
         if (item.category==='PS99') instructions = `\n\n📝 **Your username:** \`${me.username}\`\nAn admin will send your gems in-game!`;
         if (item.category==='SailorPiece') instructions = `\n\n📝 Add **vru4447** on Roblox to receive your item!`;
         if (item.category==='Nitro') instructions = `\n\nAn admin will reach out to you shortly!`;
-        if (item.category==='Crunchyroll') instructions = `\n\nYou need **6 invites** to redeem this. An admin will DM you the account details!`;
+        if (item.category==='Crunchyroll') instructions = `\n\n<@1125455505628856442> will review your claim and DM you the account details!`;
 
         const claimsArr=await getClaims();
         const arr=Array.isArray(claimsArr)?claimsArr:[];
