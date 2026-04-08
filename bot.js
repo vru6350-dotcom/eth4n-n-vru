@@ -80,7 +80,6 @@ const GUILD_ID         = (process.env.GUILD_ID   || '').trim();
 const JSONBIN_KEY      =  process.env.JSONBIN_KEY;
 const BOT_TOKEN        =  process.env.BOT_TOKEN;
 const COIN_EMOJI       = '<:CoinEmoji:1481246827448766526>';
-const ROBUX_EMOJI       = '<:robux:1481247240914731109>';
 const CRUNCH_EMOJI      = '<:crunchyroll:1490235524810539169>';
 const PS99_EMOJI        = '<:BEJ2_BlueGem:1490355727880159386>';
 const SP_EMOJI          = '<:sharingandemon:1490356605487681607>';
@@ -125,33 +124,21 @@ const activeGiveaways = new Map();
 const LETTER_POOLS = ['B','C','D','F','G','H','J','K','L','M','N','P','R','S','T','W','BR','CH','DR','FL','GR','PL','PR','SC','SK','SL','SM','SN','SP','ST','SW','TH','TR','WR'];
 
 const SHOP = [
-  { id: 'robux_25',   name: '25 Robux',   cost: 100,  category: 'Robux', robuxAmt: 25  },
-  { id: 'robux_50',   name: '50 Robux',   cost: 200,  category: 'Robux', robuxAmt: 50  },
-  { id: 'robux_75',   name: '75 Robux',   cost: 300,  category: 'Robux', robuxAmt: 75  },
-  { id: 'robux_100',  name: '100 Robux',  cost: 400,  category: 'Robux', robuxAmt: 100 },
-  { id: 'robux_125',  name: '125 Robux',  cost: 500,  category: 'Robux', robuxAmt: 125 },
-  { id: 'robux_150',  name: '150 Robux',  cost: 600,  category: 'Robux', robuxAmt: 150 },
-  { id: 'robux_175',  name: '175 Robux',  cost: 700,  category: 'Robux', robuxAmt: 175 },
-  { id: 'robux_200',  name: '200 Robux',  cost: 800,  category: 'Robux', robuxAmt: 200 },
-  { id: 'robux_225',  name: '225 Robux',  cost: 900,  category: 'Robux', robuxAmt: 225 },
-  { id: 'robux_250',  name: '250 Robux',  cost: 1000, category: 'Robux', robuxAmt: 250 },
-  { id: 'etfb_cel',   name: 'Celestial',  cost: 100,  category: 'ETFB',  robuxAmt: 0   },
-  { id: 'etfb_div',   name: 'Divine',     cost: 250,  category: 'ETFB',  robuxAmt: 0   },
   { id: 'nitro',      name: 'Nitro Method',  cost: 1000, category: 'Nitro',       robuxAmt: 0 },
   { id: 'custom_role', name: 'Custom Role',   cost: 100,  category: 'CustomRole',  robuxAmt: 0 },
   // ── TESTING SERVER SHOP ──
 
   // PS99
   { id: 'ps99_200m',  name: '200M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_400m',  name: '400M Gems',  cost: 200, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_600m',  name: '600M Gems',  cost: 300, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_800m',  name: '800M Gems',  cost: 400, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1b',    name: '1B Gems',    cost: 500, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 600, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 700, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 800, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 900, category: 'PS99', robuxAmt: 0 },
-  { id: 'ps99_2b',    name: '2B Gems',    cost: 1000, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_400m',  name: '400M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_600m',  name: '600M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_800m',  name: '800M Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1b',    name: '1B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_2b',  name: '1.2B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_4b',  name: '1.4B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_6b',  name: '1.6B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_1_8b',  name: '1.8B Gems',  cost: 100, category: 'PS99', robuxAmt: 0 },
+  { id: 'ps99_2b',    name: '2B Gems',    cost: 100, category: 'PS99', robuxAmt: 0 },
   // Sailor Piece
   { id: 'sp_sukuna_v1',      name: 'Sukuna v1 Set',       cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
   { id: 'sp_gojo_v1',        name: 'Gojo v1 Set',         cost: 100, category: 'SailorPiece',    robuxAmt: 0 },
@@ -180,7 +167,7 @@ const BIN_IDS = {
 };
 const DEFAULTS = {
   users:  {},
-  store:  { robux: 0, divines: 0, celestials: 0 },
+  store:  {},
   roblox: {},
   sab:    [],
   giveaway: {},
@@ -361,12 +348,6 @@ const slashDefs = [
   new SCB().setName('rain').setDescription('[ADMIN] Rain coins — react to enter, 2 min timer').setDefaultMemberPermissions(PFB.Administrator).addIntegerOption(o=>o.setName('amount').setDescription('Total coins to rain').setRequired(true).setMinValue(10)),
   new SCB().setName('shop').setDescription('View all items and prices'),
   new SCB().setName('redeem').setDescription('Buy Robux or ETFB from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
-    {name:'25 Robux — 100 coins',value:'robux_25'},{name:'50 Robux — 200 coins',value:'robux_50'},
-    {name:'75 Robux — 300 coins',value:'robux_75'},{name:'100 Robux — 400 coins',value:'robux_100'},
-    {name:'125 Robux — 500 coins',value:'robux_125'},{name:'150 Robux — 600 coins',value:'robux_150'},
-    {name:'175 Robux — 700 coins',value:'robux_175'},{name:'200 Robux — 800 coins',value:'robux_200'},
-    {name:'225 Robux — 900 coins',value:'robux_225'},{name:'250 Robux — 1000 coins',value:'robux_250'},
-    {name:'Celestial ETFB — 100 coins',value:'etfb_cel'},{name:'Divine ETFB — 250 coins',value:'etfb_div'},
     {name:'Nitro Method — 1000 coins',value:'nitro'},{name:'Custom Role — 100 coins',value:'custom_role'},{name:'Crunchyroll Account — 600 coins',value:'crunchyroll'}
   )),
   new SCB().setName('redeem-ps99').setDescription('Buy PS99 Gems from the shop').addStringOption(o=>o.setName('item').setDescription('Item to buy').setRequired(true).addChoices(
@@ -392,8 +373,6 @@ const slashDefs = [
   new SCB().setName('deny-claim').setDescription('[ADMIN] Deny a claim and refund to inventory').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('id').setDescription('Claim ID').setRequired(true))
     .addStringOption(o=>o.setName('reason').setDescription('Reason for denial (optional)').setRequired(false)),
-  new SCB().setName('update-robux').setDescription('[ADMIN] Update Robux stock').setDefaultMemberPermissions(PFB.Administrator).addIntegerOption(o=>o.setName('amount').setDescription('New amount').setRequired(true).setMinValue(0)),
-  new SCB().setName('update-etfb').setDescription('[ADMIN] Update ETFB stock').setDefaultMemberPermissions(PFB.Administrator).addStringOption(o=>o.setName('type').setDescription('Which item').setRequired(true).addChoices({name:'Divines',value:'divines'},{name:'Celestials',value:'celestials'})).addIntegerOption(o=>o.setName('amount').setDescription('New amount').setRequired(true).setMinValue(0)),
   new SCB().setName('give').setDescription('[ADMIN] Give coins to a user').setDefaultMemberPermissions(PFB.Administrator).addUserOption(o=>o.setName('user').setDescription('Target').setRequired(true)).addIntegerOption(o=>o.setName('amount').setDescription('Amount').setRequired(true).setMinValue(1)),
   new SCB().setName('take').setDescription('[ADMIN] Take coins from a user').setDefaultMemberPermissions(PFB.Administrator).addUserOption(o=>o.setName('user').setDescription('Target').setRequired(true)).addIntegerOption(o=>o.setName('amount').setDescription('Amount (ignored if all=true)').setRequired(false).setMinValue(1)).addBooleanOption(o=>o.setName('all').setDescription('Take ALL coins from the user').setRequired(false)),
   new SCB().setName('remove-inv').setDescription('[ADMIN] Remove an item from a user inventory').setDefaultMemberPermissions(PFB.Administrator).addUserOption(o=>o.setName('user').setDescription('Target user').setRequired(true)).addStringOption(o=>o.setName('claim_id').setDescription('Claim ID to remove').setRequired(true)),
@@ -518,7 +497,6 @@ const slashDefs = [
   )),
   new SCB().setName('find-claim').setDescription('[ADMIN] Find pending claims by category').setDefaultMemberPermissions(PFB.Administrator)
     .addStringOption(o=>o.setName('category').setDescription('Category to filter').setRequired(true).addChoices(
-      {name:'Robux',value:'Robux'},
       {name:'PS99',value:'PS99'},
       {name:'Nitro Method',value:'Nitro'},
       {name:'ETFB',value:'ETFB'},
@@ -805,15 +783,13 @@ async function cmdUseCode(reply, userId, username, codeInput) {
 }
 
 async function cmdShop(reply) {
-  const robuxLines=SHOP.filter(i=>i.category==='Robux').map(i=>`${ROBUX_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
-  const etfbLines=SHOP.filter(i=>i.category==='ETFB').map(i=>`${i.id==='etfb_cel'?'✨':'🌟'} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const NITRO_EMOJI='<:Nitro:1482656844655624192>';
   const nitroLines=SHOP.filter(i=>i.category==='Nitro').map(i=>`${NITRO_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const roleLines=SHOP.filter(i=>i.category==='CustomRole').map(i=>`🎨 **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const ps99Lines=SHOP.filter(i=>i.category==='PS99').map(i=>`${PS99_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const spLines=SHOP.filter(i=>i.category==='SailorPiece').map(i=>`${SP_EMOJI} **${i.name}** — \`${i.cost}\` ${COIN_EMOJI}  ·  \`${i.id}\``).join('\n');
   const crLines=`${CRUNCH_EMOJI} **Crunchyroll Account** — \`6 invites\`  ·  \`crunchyroll\``;
-  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:'💎 Robux',value:robuxLines,inline:false},{name:'🎮 ETFB',value:etfbLines,inline:false},{name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines||'—',inline:false},{name:`${PS99_EMOJI} PS99 Gems`,value:ps99Lines||'—',inline:false},{name:`${SP_EMOJI} Sailor Piece`,value:spLines||'—',inline:false},{name:`${CRUNCH_EMOJI} Crunchyroll`,value:crLines,inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id> | Crunchyroll requires 6 invites'})] });
+  return reply({ embeds:[new EmbedBuilder().setTitle('🏪 Rewards Shop').setColor(0x9B59B6).addFields({name:`<:Nitro:1482656844655624192> Nitro`,value:nitroLines,inline:false},{name:'🎨 Custom Role',value:roleLines||'—',inline:false},{name:`${PS99_EMOJI} PS99 Gems`,value:ps99Lines||'—',inline:false},{name:`${SP_EMOJI} Sailor Piece`,value:spLines||'—',inline:false},{name:`${CRUNCH_EMOJI} Crunchyroll`,value:crLines,inline:false}).setFooter({text:'Buy: /redeem  |  Then: /claim <id> | Crunchyroll requires 6 invites'})] });
 }
 
 async function cmdInventory(reply, userId, username) {
@@ -860,17 +836,9 @@ async function cmdRedeem(reply, userId, username, itemId) {
   if (!item) return reply({ embeds:[errEmbed('Unknown item ID. Use `/shop` to see valid IDs.')] });
   const u=await getUser(userId,username);
   if (u.coins<item.cost) return reply({ embeds:[errEmbed(`Need **${item.cost}** ${COIN_EMOJI}, you only have **${u.coins}**!`)] });
-  const store=await getStore();
-  if (item.id==='etfb_cel'&&store.celestials<=0) return reply({ embeds:[errEmbed('Celestials are out of stock!')] });
-  if (item.id==='etfb_div'&&store.divines<=0)    return reply({ embeds:[errEmbed('Divines are out of stock!')] });
-  if (item.category==='Robux'&&store.robux<item.robuxAmt) return reply({ embeds:[errEmbed(`Only **${store.robux}** Robux in stock!`)] });
-  if (item.id==='etfb_cel')      store.celestials=Math.max(0,store.celestials-1);
-  else if (item.id==='etfb_div') store.divines=Math.max(0,store.divines-1);
-  else                           store.robux=Math.max(0,store.robux-item.robuxAmt);
-  await saveStore(store); await updateStockEmbed(client);
   const claimId=await nextClaimId();
   u.coins=Math.max(0,u.coins-item.cost);
-  u.inventory.push({claimId,itemId:item.id,name:item.name,category:item.category,robuxAmt:item.robuxAmt,cost:item.cost});
+  u.inventory.push({claimId,itemId:item.id,name:item.name,category:item.category,cost:item.cost});
   await saveUser(u);
   sendLog(client,{title:'🛒 Item Redeemed',color:0x9B59B6,fields:[{name:'User',value:`<@${userId}>`,inline:true},{name:'Item',value:item.name,inline:true},{name:'Cost',value:`**${item.cost}** ${COIN_EMOJI}`,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true},{name:'Balance',value:`**${u.coins.toLocaleString()}** ${COIN_EMOJI}`,inline:true}]});
   return reply({ embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🎒 Added to Inventory!').setDescription(`**${item.name}** is now in your inventory!\nBalance: **${u.coins.toLocaleString()}** ${COIN_EMOJI}\n\n📬 Claim ID: \`${claimId}\`\nUse \`/claim ${claimId}\` to submit!`)] });
@@ -1094,17 +1062,39 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply({embeds:[errEmbed(`Invalid colour **${roleColor}**! Use a hex code like \`#FF5733\` or a colour name like \`Red\`, \`Cyan\`, \`Gold\`, etc.`)]});
     }
 
-    // Inappropriate name check — basic filter
-    const BAD_WORDS = ['nigger','nigga','faggot','retard','nazi','hitler','rape','sex','porn','dick','pussy','fuck','shit','bitch','cunt','whore','slut','ass','kkk'];
-    const nameLower = roleName.toLowerCase().replace(/[^a-z0-9]/g,'');
-    if (BAD_WORDS.some(w => nameLower.includes(w))) {
-      // Kick the user
+    // Inappropriate name check
+    const BAD_WORDS = [
+      'nigger','nigga','faggot','retard','nazi','hitler','rape','sex','porn','dick','pussy',
+      'fuck','shit','bitch','cunt','whore','slut','ass','kkk','pedo','pedophile','molest',
+      'nonce','incel','femboy','tranny','trannies','suicide','kys','uwu','simp','thot',
+      'dumb squad','idiot club','loser crew','stupid','dumbass','moron','garbage','trash squad',
+      'noob army','cringe','weeb','nerd patrol','virgin','broke','ugly','fat gang'
+    ];
+    const nameLower = roleName.toLowerCase();
+    const nameStripped = nameLower.replace(/[^a-z0-9]/g,'');
+    const isBad = BAD_WORDS.some(w => {
+      const wClean = w.replace(/[^a-z0-9]/g,'');
+      return nameStripped.includes(wClean) || nameLower.includes(w);
+    });
+    if (isBad) {
       sendLog(client,{title:'🚨 Inappropriate Role Name — User Kicked',color:0xED4245,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Name Attempted',value:roleName,inline:true}]});
-      try {
-        await interaction.user.send({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('👢 Kicked').setDescription(`You were kicked from **${interaction.guild.name}** for submitting an inappropriate role name: **${roleName}**`)]});
-      } catch {}
+      try { await interaction.user.send({embeds:[new EmbedBuilder().setColor(0xED4245).setTitle('👢 Kicked').setDescription(`You were kicked from **${interaction.guild.name}** for submitting an inappropriate role name.`)]}); } catch {}
       try { await interaction.guild.members.kick(interaction.user.id, 'Inappropriate custom role name'); } catch(e){ console.error('Kick failed:',e.message); }
       return interaction.editReply({embeds:[errEmbed('Inappropriate name detected. You have been kicked.')]});
+    }
+
+    // Check if user already has a custom role (look for roles matching any previous custom role name)
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    // Custom roles created by the bot have no permissions and weren't there originally
+    // We tag them by checking for roles the bot created (no managed, no permissions, not @everyone)
+    const existingCustom = member.roles.cache.filter(r =>
+      r.id !== interaction.guild.id &&
+      !r.managed &&
+      r.permissions.bitfield === 0n &&
+      r.members.size <= 3 // small roles likely custom
+    );
+    if (existingCustom.size > 0) {
+      return interaction.editReply({embeds:[errEmbed(`You already have a custom role (**${existingCustom.first().name}**)! You can only have 1 custom role. An admin can remove it if you want a new one.`)]});
     }
 
     // Remove item from inventory
@@ -1134,11 +1124,7 @@ client.on('interactionCreate', async interaction => {
       sendLog(client,{title:'🎨 Custom Role Claim (manual)',color:0xFEE75C,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Role Name',value:roleName,inline:true},{name:'Colour',value:hexColor,inline:true},{name:'Error',value:e.message,inline:false}]});
       return interaction.editReply({embeds:[new EmbedBuilder().setColor(0xFEE75C).setTitle('🎨 Custom Role Queued').setDescription(`Could not create automatically — submitted as claim \`${claimId}\`\nAn admin will create your role shortly!\n\n**Name:** ${roleName}\n**Colour:** ${hexColor}`)]});
     }
-    const claimsArr_UNUSED = await getClaims();
-    claimsArr.push({claimId,userId:interaction.user.id,username:interaction.user.username,itemId:'custom_role',itemName:'Custom Role',category:'CustomRole',robuxAmt:0,robloxUsername:'N/A',roleDetails:{name:roleName,color:hexColor},claimedAt:Date.now(),status:'pending'});
-    await saveClaims(claimsArr);
-    sendLog(client,{title:'🎨 Custom Role Claim Submitted',color:0xE91E63,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Role Name',value:roleName,inline:true},{name:'Colour',value:hexColor,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true}]});
-    return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('🎨 Custom Role Submitted!').setDescription(`Your custom role request has been submitted!\n\n**Name:** ${roleName}\n**Colour:** ${hexColor}\n**Claim ID:** \`${claimId}\`\n\nAn admin will create your role shortly!`)]});
+
   }
 
   if (interaction.isModalSubmit()) {
@@ -1149,14 +1135,13 @@ client.on('interactionCreate', async interaction => {
     const idx=(u.inventory||[]).findIndex(i=>i.claimId===claimId);
     if (idx===-1) return interaction.editReply({embeds:[errEmbed('Item not found in your inventory.')]});
     const item=u.inventory[idx];
-    const robloxUser=interaction.fields.getTextInputValue('roblox_username').trim();
-    const gamepassLink=item.category==='Robux'?interaction.fields.getTextInputValue('gamepass_link').trim():null;
+    const robloxUser=interaction.fields.getTextInputValue('roblox_username').trim();    const gamepassLink=null;
     const claims=await getClaims(), claimsArr=Array.isArray(claims)?claims:[];
     claimsArr.push({claimId,userId:interaction.user.id,username:interaction.user.username,itemId:item.itemId||item.id,itemName:item.name,category:item.category,robuxAmt:item.robuxAmt||0,robloxUsername:robloxUser,gamepassLink:gamepassLink||null,claimedAt:Date.now(),status:'pending'});
     await saveClaims(claimsArr);
     sendLog(client,{title:'📋 Claim Submitted',color:0x5865F2,fields:[{name:'User',value:`<@${interaction.user.id}>`,inline:true},{name:'Claim ID',value:`\`${claimId}\``,inline:true},{name:'Item',value:item.name,inline:true},{name:'Roblox Username',value:robloxUser,inline:true},{name:'Category',value:item.category,inline:true}]});
     u.inventory.splice(idx,1); await saveUser(u);
-    return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('📬 Claim Submitted!').setDescription(`Your claim for **${item.name}** has been submitted!\n\n**Claim ID:** \`${claimId}\`\n**Roblox:** \`${robloxUser}\`\n${gamepassLink?`**Gamepass:** ${gamepassLink}\n`:''}\nAn admin will process this shortly!`)]});
+    return interaction.editReply({embeds:[new EmbedBuilder().setColor(0x57F287).setTitle('📬 Claim Submitted!').setDescription(`Your claim for **${item.name}** has been submitted!\n\n**Claim ID:** \`${claimId}\`\n**Roblox:** \`${robloxUser}\`\n\nAn admin will process this shortly!`)]});
   }
 
   if (!interaction.isChatInputCommand()) return;
@@ -1164,7 +1149,7 @@ client.on('interactionCreate', async interaction => {
     const isTestSrv = isTestServer(interaction.guildId);
     // Test server: block non-testers with an error
     if (isTestSrv && !hasTesterRole(interaction.member) && !interaction.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-      const testerOnly = ['give','take','rain','update-robux','update-etfb','claims','claimed','deny-claim','remove-inv','check-inventory','make-code','drop-code','remove-code','list-codes','gtn','timeout','untimeout','warn','unwarn','warns','kick','ban','lootdrop','check-user','find-user','game-night-start','update-sab','remove-stock-sab','giveaway','chair-game','mafia','pick-number'];
+      const testerOnly = ['give','take','rain','claims','claimed','deny-claim','remove-inv','check-inventory','make-code','drop-code','remove-code','list-codes','gtn','timeout','untimeout','warn','unwarn','warns','kick','ban','lootdrop','check-user','find-user','game-night-start','update-sab','remove-stock-sab','giveaway','chair-game','mafia','pick-number'];
       if (!testerOnly.includes(cmd)) {} // non-admin cmds always allowed
     }
 
@@ -1228,7 +1213,6 @@ client.on('interactionCreate', async interaction => {
 
       const modal=new ModalBuilder().setCustomId(`claim_modal_${item.claimId}`).setTitle(`Claim: ${item.name}`);
       modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('roblox_username').setLabel('Your Roblox Username').setStyle(TextInputStyle.Short).setPlaceholder('e.g. Builderman').setRequired(true)));
-      if (item.category==='Robux') modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('gamepass_link').setLabel(`Gamepass Link (set price to ${item.robuxAmt||0} Robux)`).setStyle(TextInputStyle.Short).setPlaceholder('https://www.roblox.com/game-pass/...').setRequired(true)));
       return interaction.showModal(modal);
     }
 
@@ -1299,9 +1283,6 @@ client.on('interactionCreate', async interaction => {
       u.inventory.push({claimId:claim.claimId,itemId:claim.itemId,name:claim.itemName,category:claim.category,robuxAmt:claim.robuxAmt||0,cost:shopItem?shopItem.cost:0});
       await saveUser(u);
       const store=await getStore();
-      if (claim.category==='Robux') store.robux+=(claim.robuxAmt||0);
-      else if (claim.itemId==='etfb_cel') store.celestials+=1;
-      else if (claim.itemId==='etfb_div') store.divines+=1;
       await saveStore(store); await updateStockEmbed(client);
       let dmSent=false;
       try {
@@ -2091,7 +2072,6 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (cmd==='find-claim') {
-      if (!isTestSrv) return reply({embeds:[errEmbed('This is only available in the test server!')],flags:MessageFlags.Ephemeral});
       await interaction.deferReply({flags:MessageFlags.Ephemeral});
       const category = interaction.options.getString('category');
       const allClaims = await getClaims();
